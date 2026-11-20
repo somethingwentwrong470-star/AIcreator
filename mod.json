@@ -1,0 +1,40 @@
+{
+	"geode": "5.11.2",
+	"gd": {
+		"android": "2.2081",
+		"win": "2.2081"
+	},
+	"version": "v1.0.0",
+	"id": "custom.ai_editor_assistant",
+	"name": "AI Editor Assistant",
+	"developer": "Creator",
+	"description": "ИИ-помощник в редакторе уровней на русском языке со скриншотами и автопостройкой.",
+	"resources": {
+		"sprites": [
+			"resources/brain.png"
+		],
+		"files": [
+			"resources/ru_font.ttf"
+		]
+	},
+	"settings": {
+		"api-url": {
+			"name": "API URL (Endpoint)",
+			"description": "Адрес API (OpenAI-совместимый формат)",
+			"type": "string",
+			"default": "https://openai.com"
+		},
+		"api-key": {
+			"name": "API Ключ",
+			"description": "Ваш секретный ключ от нейросети",
+			"type": "string",
+			"default": ""
+		},
+		"model-name": {
+			"name": "Модель ИИ",
+			"description": "Например: gpt-4o, gemini-2.5-pro, claude-3-5-sonnet",
+			"type": "string",
+			"default": "gpt-4o"
+		}
+	}
+}
