@@ -52,6 +52,7 @@ protected:
     bool m_isResizing = false;
     
     CCLayerColor* m_bg = nullptr;
+    CCLayerColor* m_headerBg = nullptr;
     CCLabelTTF* m_title = nullptr;
     CCLabelTTF* m_chatLog = nullptr;
     TextInput* m_input = nullptr;
@@ -75,36 +76,44 @@ public:
     bool init() override {
         if (!CCLayer::init()) return false;
 
-        this->setContentSize({280.f, 210.f});
+        // Компактный размер окна для телефона: 230x165
+        this->setContentSize({230.f, 165.f});
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
         this->setTouchPriority(-500);
 
-        m_bg = CCLayerColor::create({18, 20, 32, 235}, 280.f, 210.f);
-        this->addChild(m_bg, -1);
+        m_bg = CCLayerColor::create({18, 20, 32, 235}, 230.f, 165.f);
+        this->addChild(m_bg, 0);
 
-        m_title = CCLabelTTF::create("ИИ Ассистент (Тяни за верх)", "ru_font.ttf"_spr, 12);
-        this->addChild(m_title);
+        m_headerBg = CCLayerColor::create({32, 36, 56, 255}, 230.f, 22.f);
+        this->addChild(m_headerBg, 1);
+
+        m_title = CCLabelTTF::create("ИИ Ассистент", "ru_font.ttf"_spr, 11);
+        this->addChild(m_title, 5);
 
         m_chatLog = CCLabelTTF::create(
-            "Готов! Напиши на русском, что построить (например: 'построй тройной шип').",
-            "ru_font.ttf"_spr, 11, {260.f, 120.f}, kCCTextAlignmentLeft
+            "Напиши запрос на русском (например: 'построй тройной шип').",
+            "ru_font.ttf"_spr, 10, {214.f, 95.f}, kCCTextAlignmentLeft
         );
-        this->addChild(m_chatLog);
+        this->addChild(m_chatLog, 5);
 
-        m_input = TextInput::create(200.f, "Запрос на русском...");
+        // Аккуратное компактное серое поле ввода
+        m_input = TextInput::create(160.f, "Запрос...");
         m_input->setFilter("");
-        this->addChild(m_input);
+        m_input->setScale(0.85f);
+        this->addChild(m_input, 10);
 
         m_menu = CCMenu::create();
         m_menu->setPosition({0.f, 0.f});
-        this->addChild(m_menu);
+        this->addChild(m_menu, 15);
 
-        auto sendSpr = ButtonSprite::create("ОК", "goldFont.fnt", "GJ_button_01.png", 0.65f);
+        // Кнопка отправки (стрелка/галочка) справа от поля ввода
+        auto sendSpr = ButtonSprite::create(">>", "goldFont.fnt", "GJ_button_01.png", 0.5f);
         m_sendBtn = CCMenuItemSpriteExtra::create(sendSpr, this, menu_selector(AIChatWindow::onSend));
         m_menu->addChild(m_sendBtn);
 
-        auto abortSpr = ButtonSprite::create("Прервать", "goldFont.fnt", "GJ_button_06.png", 0.55f);
+        // Кнопка Прервать в шапке окна
+        auto abortSpr = ButtonSprite::create("Прервать", "goldFont.fnt", "GJ_button_06.png", 0.45f);
         m_abortBtn = CCMenuItemSpriteExtra::create(abortSpr, this, menu_selector(AIChatWindow::onAbort));
         m_abortBtn->setVisible(false);
         m_menu->addChild(m_abortBtn);
@@ -116,15 +125,20 @@ public:
     void updateLayoutPositions() {
         CCSize s = this->getContentSize();
         m_bg->setContentSize(s);
-        m_title->setPosition({s.width / 2.f, s.height - 14.f});
-        m_chatLog->setDimensions({s.width - 20.f, s.height - 75.f});
-        m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 5.f});
+        m_headerBg->setContentSize({s.width, 22.f});
+        m_headerBg->setPosition({0.f, s.height - 22.f});
         
-        float targetInputW = s.width - 75.f;
-        m_input->setScaleX(targetInputW / 200.f);
-        m_input->setPosition({targetInputW / 2.f + 10.f, 22.f});
-        m_sendBtn->setPosition({s.width - 30.f, 22.f});
-        m_abortBtn->setPosition({s.width - 45.f, s.height - 14.f});
+        m_title->setPosition({s.width / 2.f, s.height - 11.f});
+        m_chatLog->setDimensions({s.width - 16.f, s.height - 62.f});
+        m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 4.f});
+        
+        float inputWidth = s.width - 56.f;
+        m_input->setScaleX((inputWidth / 160.f) * 0.95f);
+        m_input->setScaleY(0.8f);
+        m_input->setPosition({inputWidth / 2.f + 8.f, 18.f});
+        
+        m_sendBtn->setPosition({s.width - 24.f, 18.f});
+        m_abortBtn->setPosition({s.width - 38.f, s.height - 11.f});
     }
 
     void onSend(CCObject*) {
@@ -143,7 +157,7 @@ public:
         g_aiControlling = true;
         m_abortBtn->setVisible(true);
         m_input->setString("");
-        m_chatLog->setString(("Вы: " + userPrompt + "\n[Делаю скриншот и отправляю ИИ...]").c_str());
+        m_chatLog->setString(("Вы: " + userPrompt + "\n[Делаю скриншот и думаю...]").c_str());
 
         std::string base64Img = captureEditorScreenshotBase64();
 
@@ -181,8 +195,7 @@ public:
         messages.push(matjson::makeObject({{"role", "system"}, {"content", sysPrompt}}));
         messages.push(matjson::makeObject({{"role", "user"}, {"content", contentArr}}));
 
-        matjson::Value payload = matjson::Value::array();
-        payload = matjson::makeObject({
+        matjson::Value payload = matjson::makeObject({
             {"model", model},
             {"messages", messages},
             {"max_tokens", 1000}
@@ -266,9 +279,9 @@ public:
         if (pos.x < 0 || pos.y < 0 || pos.x > s.width || pos.y > s.height) return false;
 
         m_dragStart = touch->getLocation();
-        if (pos.x > s.width - 25.f && pos.y < 25.f) {
+        if (pos.x > s.width - 22.f && pos.y < 22.f) {
             m_isResizing = true;
-        } else if (pos.y > s.height - 28.f) {
+        } else if (pos.y > s.height - 22.f) {
             m_isDragging = true;
         }
         return true;
@@ -282,8 +295,8 @@ public:
             this->setPosition(this->getPosition() + delta);
         } else if (m_isResizing) {
             CCSize s = this->getContentSize();
-            float newW = std::max(200.f, s.width + delta.x);
-            float newH = std::max(150.f, s.height - delta.y);
+            float newW = std::max(180.f, s.width + delta.x);
+            float newH = std::max(130.f, s.height - delta.y);
             this->setContentSize({newW, newH});
             updateLayoutPositions();
         }
@@ -305,21 +318,37 @@ class $modify(AIEditorLayerHook, LevelEditorLayer) {
 class $modify(AIEditorUIHook, EditorUI) {
     struct Fields {
         AIChatWindow* chatWindow = nullptr;
+        CCSprite* crossSprite = nullptr;
     };
 
     bool init(LevelEditorLayer* editorLayer) {
         if (!EditorUI::init(editorLayer)) return false;
 
         auto winSize = CCDirector::sharedDirector()->getWinSize();
-        auto btnSprite = CCSprite::create("brain.png"_spr);
-        if (btnSprite) {
-            btnSprite->setScale(0.18f);
+        auto brainSpr = CCSprite::create("brain.png"_spr);
+        if (brainSpr) {
+            // Круглая кнопка в стиле GD (как у соседей вверху)
+            auto circleBtnSpr = CircleButtonSprite::create(
+                brainSpr, CircleBaseColor::Green, CircleBaseSize::Small
+            );
+            circleBtnSpr->setScale(0.85f);
+
+            // Красный крестик поверх мозга (появляется при открытии чата)
+            m_fields->crossSprite = CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png");
+            if (m_fields->crossSprite) {
+                m_fields->crossSprite->setPosition(circleBtnSpr->getContentSize() / 2.f);
+                m_fields->crossSprite->setScale(0.8f);
+                m_fields->crossSprite->setVisible(false);
+                circleBtnSpr->addChild(m_fields->crossSprite, 10);
+            }
+
             auto aiBtn = CCMenuItemSpriteExtra::create(
-                btnSprite, this, menu_selector(AIEditorUIHook::onToggleAIChat)
+                circleBtnSpr, this, menu_selector(AIEditorUIHook::onToggleAIChat)
             );
             
             auto menu = CCMenu::create();
-            menu->setPosition({winSize.width - 145.f, winSize.height - 25.f});
+            // Ровно в том месте, которое ты обвёл белым кружочком
+            menu->setPosition({195.f, winSize.height - 23.f});
             menu->addChild(aiBtn);
             this->addChild(menu, 100);
         }
@@ -328,12 +357,19 @@ class $modify(AIEditorUIHook, EditorUI) {
     }
 
     void onToggleAIChat(CCObject*) {
+        bool nowVisible = false;
         if (!m_fields->chatWindow) {
             m_fields->chatWindow = AIChatWindow::create();
-            m_fields->chatWindow->setPosition({80.f, 70.f});
+            m_fields->chatWindow->setPosition({110.f, 95.f});
             this->addChild(m_fields->chatWindow, 500);
+            nowVisible = true;
         } else {
-            m_fields->chatWindow->setVisible(!m_fields->chatWindow->isVisible());
+            nowVisible = !m_fields->chatWindow->isVisible();
+            m_fields->chatWindow->setVisible(nowVisible);
+        }
+
+        if (m_fields->crossSprite) {
+            m_fields->crossSprite->setVisible(nowVisible);
         }
     }
 };
