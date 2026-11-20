@@ -88,7 +88,6 @@ public:
         m_headerBg = CCLayerColor::create({32, 36, 56, 255}, 230.f, 22.f);
         this->addChild(m_headerBg, 1);
 
-        // Тёмно-серая плашка под поле ввода
         m_inputBg = CCLayerColor::create({35, 38, 52, 255}, 168.f, 24.f);
         this->addChild(m_inputBg, 2);
 
@@ -101,7 +100,6 @@ public:
         );
         this->addChild(m_chatLog, 5);
 
-        // Нативное поле ввода с поддержкой русского TTF-шрифта и клавиатуры Android
         m_textField = CCTextFieldTTF::textFieldWithPlaceHolder(
             "Нажми сюда и пиши...", {160.f, 20.f}, kCCTextAlignmentLeft, "ru_font.ttf"_spr, 11.f
         );
@@ -111,6 +109,7 @@ public:
 
         m_menu = CCMenu::create();
         m_menu->setPosition({0.f, 0.f});
+        m_menu->setTouchPriority(-505); // Чтобы кнопки нажимались поверх окна чата
         this->addChild(m_menu, 15);
 
         auto sendSpr = ButtonSprite::create(">>", "goldFont.fnt", "GJ_button_01.png", 0.5f);
@@ -288,7 +287,6 @@ public:
             return false;
         }
 
-        // Если нажали на нижнюю панель с полем ввода — открываем клавиатуру Android
         if (pos.y < 36.f && pos.x < s.width - 42.f) {
             m_textField->attachWithIME();
             return true;
