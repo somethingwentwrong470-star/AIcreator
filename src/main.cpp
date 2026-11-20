@@ -1,4 +1,4 @@
-#include <Geode/Geode.hpp>
+э#include <Geode/Geode.hpp>
 #include <Geode/modify/EditorUI.hpp>
 #include <Geode/modify/LevelEditorLayer.hpp>
 #include <Geode/utils/web.hpp>
@@ -53,9 +53,10 @@ protected:
     
     CCLayerColor* m_bg = nullptr;
     CCLayerColor* m_headerBg = nullptr;
+    CCLayerColor* m_inputBg = nullptr;
     CCLabelTTF* m_title = nullptr;
     CCLabelTTF* m_chatLog = nullptr;
-    TextInput* m_input = nullptr;
+    CCTextFieldTTF* m_textField = nullptr;
     CCMenu* m_menu = nullptr;
     CCMenuItemSpriteExtra* m_sendBtn = nullptr;
     CCMenuItemSpriteExtra* m_abortBtn = nullptr;
@@ -76,7 +77,6 @@ public:
     bool init() override {
         if (!CCLayer::init()) return false;
 
-        // Компактный размер окна для телефона: 230x165
         this->setContentSize({230.f, 165.f});
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
@@ -88,6 +88,10 @@ public:
         m_headerBg = CCLayerColor::create({32, 36, 56, 255}, 230.f, 22.f);
         this->addChild(m_headerBg, 1);
 
+        // Тёмно-серая плашка под поле ввода
+        m_inputBg = CCLayerColor::create({35, 38, 52, 255}, 168.f, 24.f);
+        this->addChild(m_inputBg, 2);
+
         m_title = CCLabelTTF::create("ИИ Ассистент", "ru_font.ttf"_spr, 11);
         this->addChild(m_title, 5);
 
@@ -97,22 +101,22 @@ public:
         );
         this->addChild(m_chatLog, 5);
 
-        // Аккуратное компактное серое поле ввода
-        m_input = TextInput::create(160.f, "Запрос...");
-        m_input->setFilter("");
-        m_input->setScale(0.85f);
-        this->addChild(m_input, 10);
+        // Нативное поле ввода с поддержкой русского TTF-шрифта и клавиатуры Android
+        m_textField = CCTextFieldTTF::textFieldWithPlaceHolder(
+            "Нажми сюда и пиши...", {160.f, 20.f}, kCCTextAlignmentLeft, "ru_font.ttf"_spr, 11.f
+        );
+        m_textField->setColorSpaceHolder({150, 150, 170});
+        m_textField->setColor({255, 255, 255});
+        this->addChild(m_textField, 10);
 
         m_menu = CCMenu::create();
         m_menu->setPosition({0.f, 0.f});
         this->addChild(m_menu, 15);
 
-        // Кнопка отправки (стрелка/галочка) справа от поля ввода
         auto sendSpr = ButtonSprite::create(">>", "goldFont.fnt", "GJ_button_01.png", 0.5f);
         m_sendBtn = CCMenuItemSpriteExtra::create(sendSpr, this, menu_selector(AIChatWindow::onSend));
         m_menu->addChild(m_sendBtn);
 
-        // Кнопка Прервать в шапке окна
         auto abortSpr = ButtonSprite::create("Прервать", "goldFont.fnt", "GJ_button_06.png", 0.45f);
         m_abortBtn = CCMenuItemSpriteExtra::create(abortSpr, this, menu_selector(AIChatWindow::onAbort));
         m_abortBtn->setVisible(false);
@@ -132,17 +136,20 @@ public:
         m_chatLog->setDimensions({s.width - 16.f, s.height - 62.f});
         m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 4.f});
         
-        float inputWidth = s.width - 56.f;
-        m_input->setScaleX((inputWidth / 160.f) * 0.95f);
-        m_input->setScaleY(0.8f);
-        m_input->setPosition({inputWidth / 2.f + 8.f, 18.f});
+        float inputWidth = s.width - 58.f;
+        m_inputBg->setContentSize({inputWidth, 24.f});
+        m_inputBg->setPosition({8.f, 6.f});
+        
+        m_textField->setDimensions({inputWidth - 8.f, 18.f});
+        m_textField->setPosition({inputWidth / 2.f + 10.f, 17.f});
         
         m_sendBtn->setPosition({s.width - 24.f, 18.f});
         m_abortBtn->setPosition({s.width - 38.f, s.height - 11.f});
     }
 
     void onSend(CCObject*) {
-        std::string userPrompt = m_input->getString();
+        m_textField->detachWithIME();
+        std::string userPrompt = m_textField->getString() ? m_textField->getString() : "";
         if (userPrompt.empty() || g_aiControlling) return;
 
         std::string apiUrl = Mod::get()->getSettingValue<std::string>("api-url");
@@ -156,7 +163,7 @@ public:
 
         g_aiControlling = true;
         m_abortBtn->setVisible(true);
-        m_input->setString("");
+        m_textField->setString("");
         m_chatLog->setString(("Вы: " + userPrompt + "\n[Делаю скриншот и думаю...]").c_str());
 
         std::string base64Img = captureEditorScreenshotBase64();
@@ -276,8 +283,18 @@ public:
         if (!this->isVisible()) return false;
         CCPoint pos = this->convertTouchToNodeSpace(touch);
         CCSize s = this->getContentSize();
-        if (pos.x < 0 || pos.y < 0 || pos.x > s.width || pos.y > s.height) return false;
+        if (pos.x < 0 || pos.y < 0 || pos.x > s.width || pos.y > s.height) {
+            m_textField->detachWithIME();
+            return false;
+        }
 
+        // Если нажали на нижнюю панель с полем ввода — открываем клавиатуру Android
+        if (pos.y < 36.f && pos.x < s.width - 42.f) {
+            m_textField->attachWithIME();
+            return true;
+        }
+
+        m_textField->detachWithIME();
         m_dragStart = touch->getLocation();
         if (pos.x > s.width - 22.f && pos.y < 22.f) {
             m_isResizing = true;
@@ -327,13 +344,11 @@ class $modify(AIEditorUIHook, EditorUI) {
         auto winSize = CCDirector::sharedDirector()->getWinSize();
         auto brainSpr = CCSprite::create("brain.png"_spr);
         if (brainSpr) {
-            // Круглая кнопка в стиле GD (как у соседей вверху)
             auto circleBtnSpr = CircleButtonSprite::create(
                 brainSpr, CircleBaseColor::Green, CircleBaseSize::Small
             );
             circleBtnSpr->setScale(0.85f);
 
-            // Красный крестик поверх мозга (появляется при открытии чата)
             m_fields->crossSprite = CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png");
             if (m_fields->crossSprite) {
                 m_fields->crossSprite->setPosition(circleBtnSpr->getContentSize() / 2.f);
@@ -347,7 +362,6 @@ class $modify(AIEditorUIHook, EditorUI) {
             );
             
             auto menu = CCMenu::create();
-            // Ровно в том месте, которое ты обвёл белым кружочком
             menu->setPosition({195.f, winSize.height - 23.f});
             menu->addChild(aiBtn);
             this->addChild(menu, 100);
