@@ -120,8 +120,9 @@ public:
         m_chatLog->setDimensions({s.width - 20.f, s.height - 75.f});
         m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 5.f});
         
-        m_input->setWidth(s.width - 75.f);
-        m_input->setPosition({(s.width - 65.f) / 2.f + 8.f, 22.f});
+        float targetInputW = s.width - 75.f;
+        m_input->setScaleX(targetInputW / 200.f);
+        m_input->setPosition({targetInputW / 2.f + 10.f, 22.f});
         m_sendBtn->setPosition({s.width - 30.f, 22.f});
         m_abortBtn->setPosition({s.width - 45.f, s.height - 14.f});
     }
@@ -180,7 +181,8 @@ public:
         messages.push(matjson::makeObject({{"role", "system"}, {"content", sysPrompt}}));
         messages.push(matjson::makeObject({{"role", "user"}, {"content", contentArr}}));
 
-        matjson::Value payload = matjson::makeObject({
+        matjson::Value payload = matjson::Value::array();
+        payload = matjson::makeObject({
             {"model", model},
             {"messages", messages},
             {"max_tokens", 1000}
@@ -311,13 +313,13 @@ class $modify(AIEditorUIHook, EditorUI) {
         auto winSize = CCDirector::sharedDirector()->getWinSize();
         auto btnSprite = CCSprite::create("brain.png"_spr);
         if (btnSprite) {
-            btnSprite->setScale(0.22f);
+            btnSprite->setScale(0.18f);
             auto aiBtn = CCMenuItemSpriteExtra::create(
                 btnSprite, this, menu_selector(AIEditorUIHook::onToggleAIChat)
             );
             
             auto menu = CCMenu::create();
-            menu->setPosition({winSize.width - 35.f, winSize.height / 2.f + 40.f});
+            menu->setPosition({winSize.width - 145.f, winSize.height - 25.f});
             menu->addChild(aiBtn);
             this->addChild(menu, 100);
         }
