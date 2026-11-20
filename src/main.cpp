@@ -45,12 +45,13 @@ std::string captureEditorScreenshotBase64() {
     }
     return "";
 }
-class AIChatWindow : public CCLayerColor {
+class AIChatWindow : public CCLayer {
 protected:
     CCPoint m_dragStart;
     bool m_isDragging = false;
     bool m_isResizing = false;
     
+    CCLayerColor* m_bg = nullptr;
     CCLabelTTF* m_title = nullptr;
     CCLabelTTF* m_chatLog = nullptr;
     TextInput* m_input = nullptr;
@@ -58,7 +59,7 @@ protected:
     CCMenuItemSpriteExtra* m_sendBtn = nullptr;
     CCMenuItemSpriteExtra* m_abortBtn = nullptr;
     
-    EventListener<web::WebTask> m_webListener;
+    async::TaskHolder<web::WebResponse> m_webHolder;
 
 public:
     static AIChatWindow* create() {
@@ -72,18 +73,22 @@ public:
     }
 
     bool init() override {
-        if (!CCLayerColor::initWithColor({18, 20, 32, 235}, 280, 210)) return false;
+        if (!CCLayer::init()) return false;
 
+        this->setContentSize({280.f, 210.f});
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
         this->setTouchPriority(-500);
+
+        m_bg = CCLayerColor::create({18, 20, 32, 235}, 280.f, 210.f);
+        this->addChild(m_bg, -1);
 
         m_title = CCLabelTTF::create("ИИ Ассистент (Тяни за верх)", "ru_font.ttf"_spr, 12);
         this->addChild(m_title);
 
         m_chatLog = CCLabelTTF::create(
             "Готов! Напиши на русском, что построить (например: 'построй тройной шип').",
-            "ru_font.ttf"_spr, 11, {260, 120}, kCCTextAlignmentLeft
+            "ru_font.ttf"_spr, 11, {260.f, 120.f}, kCCTextAlignmentLeft
         );
         this->addChild(m_chatLog);
 
@@ -92,7 +97,7 @@ public:
         this->addChild(m_input);
 
         m_menu = CCMenu::create();
-        m_menu->setPosition({0, 0});
+        m_menu->setPosition({0.f, 0.f});
         this->addChild(m_menu);
 
         auto sendSpr = ButtonSprite::create("ОК", "goldFont.fnt", "GJ_button_01.png", 0.65f);
@@ -110,6 +115,7 @@ public:
 
     void updateLayoutPositions() {
         CCSize s = this->getContentSize();
+        m_bg->setContentSize(s);
         m_title->setPosition({s.width / 2.f, s.height - 14.f});
         m_chatLog->setDimensions({s.width - 20.f, s.height - 75.f});
         m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 5.f});
@@ -185,27 +191,23 @@ public:
         req.header("Authorization", "Bearer " + apiKey);
         req.bodyJSON(payload);
 
-        m_webListener.bind([this](web::WebTask::Event* e) {
-            if (auto res = e->getValue()) {
-                if (!g_aiControlling) return;
+        m_webHolder.spawn(req.post(apiUrl), [this](web::WebResponse res) {
+            if (!g_aiControlling) return;
 
-                if (res->ok()) {
-                    auto jsonRes = res->json();
-                    if (jsonRes.isOk()) {
-                        auto data = jsonRes.unwrap();
-                        std::string aiText = data["choices"]["message"]["content"].asString().unwrapOr("");
-                        executeAIActions(aiText);
-                    } else {
-                        m_chatLog->setString("Ошибка чтения ответа от сервера.");
-                    }
+            if (res.ok()) {
+                auto jsonRes = res.json();
+                if (jsonRes.isOk()) {
+                    auto data = jsonRes.unwrap();
+                    std::string aiText = data["choices"]["message"]["content"].asString().unwrapOr("");
+                    executeAIActions(aiText);
                 } else {
-                    m_chatLog->setString(fmt::format("Ошибка API (Код {}): проверь URL и ключ.", res->code()).c_str());
+                    m_chatLog->setString("Ошибка чтения ответа от сервера.");
                 }
-                finishAIControl();
+            } else {
+                m_chatLog->setString(fmt::format("Ошибка API (Код {}): проверь URL и ключ.", res.code()).c_str());
             }
+            finishAIControl();
         });
-
-        m_webListener.setFilter(req.post(apiUrl));
     }
     void executeAIActions(std::string rawText) {
         auto start = rawText.find('{');
@@ -250,7 +252,7 @@ public:
     }
 
     void onAbort(CCObject*) {
-        m_webListener.getFilter().cancel();
+        m_webHolder.cancel();
         finishAIControl();
         m_chatLog->setString("Прервано! Управление возвращено.");
     }
@@ -333,4 +335,3 @@ class $modify(AIEditorUIHook, EditorUI) {
         }
     }
 };
-ы
