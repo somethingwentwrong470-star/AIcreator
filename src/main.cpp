@@ -1,4 +1,4 @@
-э#include <Geode/Geode.hpp>
+#include <Geode/Geode.hpp>
 #include <Geode/modify/EditorUI.hpp>
 #include <Geode/modify/LevelEditorLayer.hpp>
 #include <Geode/utils/web.hpp>
