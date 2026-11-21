@@ -52,39 +52,12 @@ std::string extractHex32(const std::string& raw) {
     if (hexOnly.size() >= 32) return hexOnly.substr(hexOnly.size() - 32);
     return hexOnly;
 }
-
-std::string captureEditorBase64() {
-    auto editor = LevelEditorLayer::get();
-    if (!editor) return "";
-    auto winSize = CCDirector::sharedDirector()->getWinSize();
-    auto rt = CCRenderTexture::create(static_cast<int>(winSize.width), static_cast<int>(winSize.height));
-    if (!rt) return "";
-    rt->beginWithClear(0.f, 0.f, 0.f, 1.f);
-    editor->visit();
-    rt->end();
-    auto tempPath = Mod::get()->getSaveDir() / "ai_screen.png";
-    if (!rt->saveToFile(tempPath.string().c_str(), kCCImageFormatPNG)) return "";
-    std::ifstream file(tempPath, std::ios::binary);
-    if (!file) return "";
-    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    static const char* chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    int val = 0, valb = -6;
-    for (uint8_t c : bytes) {
-        val = (val << 8) + c;
-        valb += 8;
-        while (valb >= 0) { out.push_back(chars[(val >> valb) & 0x3F]); valb -= 6; }
-    }
-    if (valb > -6) out.push_back(chars[((val << 8) >> (valb + 8)) & 0x3F]);
-    while (out.size() % 4) out.push_back('=');
-    return out;
-}
 class AIChatWindow : public CCLayer {
 protected:
     CCPoint m_dragStart;
     bool m_isDragging = false;
     bool m_isResizing = false;
-    bool m_useCloudflare = false; // false = Pollinations (без ключа), true = Cloudflare
+    bool m_useCloudflare = false; // false = Pollinations, true = Cloudflare
 
     CCLayerColor* m_bg = nullptr;
     CCLayerColor* m_headerBg = nullptr;
@@ -124,7 +97,7 @@ public:
 
         m_title = CCLabelTTF::create("ИИ Чат", "ru_font.ttf"_spr, 11);
         this->addChild(m_title, 5);
-        m_chatLog = CCLabelTTF::create("Pollinations готов (ключ не нужен)! Пиши по-русски:", "ru_font.ttf"_spr, 10, {214.f, 95.f}, kCCTextAlignmentLeft);
+        m_chatLog = CCLabelTTF::create("Pollinations готов! Пиши запрос по-русски:", "ru_font.ttf"_spr, 10, {214.f, 95.f}, kCCTextAlignmentLeft);
         this->addChild(m_chatLog, 5);
 
         m_textField = CCTextFieldTTF::textFieldWithPlaceHolder("Нажми сюда и пиши...", {160.f, 20.f}, kCCTextAlignmentLeft, "ru_font.ttf"_spr, 11.f);
@@ -157,7 +130,7 @@ public:
     void onSwitchProvider(CCObject*) {
         m_useCloudflare = !m_useCloudflare;
         m_providerSpr->setString(m_useCloudflare ? "Cloudflare" : "Pollinations");
-        m_chatLog->setString(m_useCloudflare ? "Выбран Cloudflare (со скриншотом экрана)" : "Выбран Pollinations (бесплатно со скриншотом)");
+        m_chatLog->setString(m_useCloudflare ? "Выбран Cloudflare (нужны CF_ID и CF_KEY)" : "Выбран Pollinations");
     }
 
     void updateLayoutPositions() {
@@ -196,55 +169,60 @@ public:
             "ID: 1-блок, 8-шип, 9-мал.шип, 35-желт.батут, 36-желт.сфера, 12-куб, 13-корабль.", camX, camY
         );
 
-        std::string b64 = captureEditorBase64();
-
-        matjson::Value contentArr = matjson::Value::array();
-        contentArr.push(matjson::makeObject({{"type", "text"}, {"text", userPrompt}}));
-        if (!b64.empty()) {
-            contentArr.push(matjson::makeObject({{"type", "image_url"}, {"image_url", matjson::makeObject({{"url", "data:image/png;base64," + b64}})}}));
-        }
-
-        matjson::Value messages = matjson::Value::array();
-        messages.push(matjson::makeObject({{"role", "system"}, {"content", sysPrompt}}));
-        messages.push(matjson::makeObject({{"role", "user"}, {"content", userPrompt}}));
-
-        if (!m_useCloudflare) {
-            g_aiControlling = true;
-            m_abortBtn->setVisible(true);
-            m_chatLog->setString(("Вы: " + userPrompt + "\n[Скриншот сделан, Pollinations думает...]").c_str());
-
-            std::string pollUrl = std::string("https://") + "text.pollinations." + "ai/";
-            matjson::Value payload = matjson::makeObject({
-                {"messages", messages},
-                {"model", "openai"},
-                {"jsonMode", true}
-            });
-
-            web::WebRequest req;
-            req.userAgent("Mozilla/5.0 GeodeMod/1.0");
-            req.header("Content-Type", "application/json");
-            req.bodyJSON(payload);
-
-            m_webHolder.spawn(req.post(pollUrl), [this](web::WebResponse res) {
-                if (!g_aiControlling) return;
-                std::string rawResp = res.string().unwrapOr("");
-                if (res.ok() && !rawResp.empty()) {
-                    executeAIActions(rawResp);
-                } else {
-                    std::string errMsg(res.errorMessage());
-                    m_chatLog->setString(fmt::format("Pollinations Код {}: {}\n{}", res.code(), errMsg, rawResp.substr(0, 90)).c_str());
-                }
-                finishAIControl();
-            });
-            return;
-        }
-
         std::string cfIdRaw = readConfigValue("CF_ID");
         if (cfIdRaw.empty()) cfIdRaw = Mod::get()->getSettingValue<std::string>("cf-account-id");
         std::string cfId = extractHex32(cfIdRaw);
 
         std::string apiKey = readConfigValue("CF_KEY");
         if (apiKey.empty()) apiKey = trimStr(Mod::get()->getSettingValue<std::string>("api-key"));
+
+        matjson::Value sysMsg = matjson::Value::object();
+        sysMsg["role"] = "system";
+        sysMsg["content"] = sysPrompt;
+
+        matjson::Value usrMsg = matjson::Value::object();
+        usrMsg["role"] = "user";
+        usrMsg["content"] = userPrompt;
+
+        matjson::Value messages = matjson::Value::array();
+        messages.push(sysMsg);
+        messages.push(usrMsg);
+
+        if (!m_useCloudflare) {
+            g_aiControlling = true;
+            m_abortBtn->setVisible(true);
+            m_chatLog->setString(("Вы: " + userPrompt + "\n[Pollinations думает...]").c_str());
+
+            matjson::Value payload = matjson::Value::object();
+            payload["model"] = "openai";
+            payload["messages"] = messages;
+
+            std::string pollUrl = std::string("https://") + "gen.pollinations." + "ai/v1/chat/completions";
+            web::WebRequest req;
+            req.userAgent("Mozilla/5.0 GeodeMod/1.0");
+            req.header("Content-Type", "application/json");
+            if (!apiKey.empty()) req.header("Authorization", "Bearer " + apiKey);
+            req.bodyString(payload.dump());
+
+            m_webHolder.spawn(req.post(pollUrl), [this](web::WebResponse res) {
+                if (!g_aiControlling) return;
+                std::string rawResp = res.string().unwrapOr("");
+                if (res.ok() && !rawResp.empty()) {
+                    auto jsonRes = res.json();
+                    if (jsonRes.isOk()) {
+                        auto data = jsonRes.unwrap();
+                        std::string aiText = data["choices"]["message"]["content"].asString().unwrapOr("");
+                        if (!aiText.empty()) executeAIActions(aiText);
+                        else executeAIActions(rawResp);
+                    } else executeAIActions(rawResp);
+                } else {
+                    std::string errMsg(res.errorMessage());
+                    m_chatLog->setString(fmt::format("Код {}: {}\n{}", res.code(), errMsg, rawResp.substr(0, 110)).c_str());
+                }
+                finishAIControl();
+            });
+            return;
+        }
 
         if (cfId.size() != 32 || apiKey.empty()) {
             m_chatLog->setString("Укажи 32-значный CF_ID и CF_KEY в ai_config.txt!");
@@ -253,16 +231,17 @@ public:
 
         g_aiControlling = true;
         m_abortBtn->setVisible(true);
-        m_chatLog->setString(("Вы: " + userPrompt + "\n[Скриншот сделан, Cloudflare думает...]").c_str());
+        m_chatLog->setString(("Вы: " + userPrompt + "\n[Cloudflare думает...]").c_str());
 
-        std::string cfUrl = std::string("https://") + "api.cloudflare." + "com/client/v4/accounts/" + cfId + "/ai/run/@cf/meta/llama-3.2-11b-vision-instruct";
-        matjson::Value payload = matjson::makeObject({{"messages", messages}});
+        matjson::Value payload = matjson::Value::object();
+        payload["messages"] = messages;
 
+        std::string cfUrl = std::string("https://") + "api.cloudflare." + "com/client/v4/accounts/" + cfId + "/ai/run/@cf/meta/llama-3.1-8b-instruct";
         web::WebRequest req;
         req.userAgent("Mozilla/5.0 GeodeMod/1.0");
         req.header("Content-Type", "application/json");
         req.header("Authorization", "Bearer " + apiKey);
-        req.bodyJSON(payload);
+        req.bodyString(payload.dump());
 
         m_webHolder.spawn(req.post(cfUrl), [this](web::WebResponse res) {
             if (!g_aiControlling) return;
@@ -277,7 +256,7 @@ public:
                 } else executeAIActions(rawResp);
             } else {
                 std::string errMsg(res.errorMessage());
-                m_chatLog->setString(fmt::format("CF Код {}: {}\n{}", res.code(), errMsg, rawResp.substr(0, 90)).c_str());
+                m_chatLog->setString(fmt::format("CF Код {}: {}\n{}", res.code(), errMsg, rawResp.substr(0, 110)).c_str());
             }
             finishAIControl();
         });
