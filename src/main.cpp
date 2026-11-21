@@ -53,7 +53,7 @@ protected:
     CCPoint m_dragStart;
     bool m_isDragging = false;
     bool m_isResizing = false;
-    int m_providerIndex = 0;
+    int m_providerIndex = 0; // 0: Pollinations (без ключа), 1: Cloudflare, 2: VseGPT, 3: OpenRouter
 
     CCLayerColor* m_bg = nullptr;
     CCLayerColor* m_headerBg = nullptr;
@@ -77,7 +77,7 @@ public:
     }
 
     const char* getProviderName() const {
-        const char* names[] = {"Cloudflare", "Pollinations", "VseGPT", "OpenRouter"};
+        const char* names[] = {"Pollinations", "Cloudflare", "VseGPT", "OpenRouter"};
         return names[m_providerIndex % 4];
     }
 
@@ -95,14 +95,13 @@ public:
 
         m_title = CCLabelTTF::create("ИИ Чат", "ru_font.ttf"_spr, 11);
         this->addChild(m_title, 5);
-        m_chatLog = CCLabelTTF::create("Выбери ИИ сверху и пиши запрос!", "ru_font.ttf"_spr, 10, {214.f, 82.f}, kCCTextAlignmentLeft);
+        m_chatLog = CCLabelTTF::create("Pollinations готов (ключ не нужен)! Пиши запрос:", "ru_font.ttf"_spr, 10, {214.f, 82.f}, kCCTextAlignmentLeft);
         this->addChild(m_chatLog, 5);
 
-        m_previewLabel = CCLabelTTF::create("Ввод: ", "ru_font.ttf"_spr, 9, {214.f, 16.f}, kCCTextAlignmentLeft);
-        m_previewLabel->setColor({140, 220, 255});
+        m_previewLabel = CCLabelTTF::create("Текст: ", "ru_font.ttf"_spr, 10, {214.f, 18.f}, kCCTextAlignmentLeft);
+        m_previewLabel->setColor({120, 230, 255});
         this->addChild(m_previewLabel, 8);
 
-        // Полностью видимый и нажимаемый TextInput
         m_input = TextInput::create(160.f, "Tap here...");
         m_input->setCommonFilter(CommonFilter::Any);
         m_input->setMaxCharCount(150);
@@ -110,7 +109,7 @@ public:
         this->addChild(m_input, 20);
 
         m_input->setCallback([this](std::string const& str) {
-            m_previewLabel->setString(("Ввод: " + str).c_str());
+            m_previewLabel->setString(("Текст: " + str).c_str());
         });
 
         m_menu = CCMenu::create();
@@ -150,7 +149,7 @@ public:
         m_providerBtn->setPosition({s.width / 2.f + 12.f, s.height - 11.f});
         m_chatLog->setDimensions({s.width - 16.f, s.height - 80.f});
         m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 12.f});
-        m_previewLabel->setDimensions({s.width - 16.f, 16.f});
+        m_previewLabel->setDimensions({s.width - 16.f, 18.f});
         m_previewLabel->setPosition({s.width / 2.f, 40.f});
         float inputWidth = s.width - 58.f;
         m_input->setPosition({inputWidth / 2.f + 10.f, 18.f});
@@ -164,15 +163,18 @@ public:
         std::string cfId = Mod::get()->getSettingValue<std::string>("cf-account-id");
         std::string apiKey = Mod::get()->getSettingValue<std::string>("api-key");
         std::string apiUrl = "", model = "";
+        bool sendImage = false;
 
         if (m_providerIndex == 0) {
-            if (cfId.empty()) { m_chatLog->setString("Ошибка: Укажи Cloudflare Account ID в настройках!"); return; }
-            apiUrl = "https://cloudflare.com" + cfId + "/ai/v1/chat/completions";
-            model = "@cf/meta/llama-3.2-11b-vision-instruct";
-        } else if (m_providerIndex == 1) {
             apiUrl = "https://pollinations.ai";
             model = "openai";
-            if (apiKey.empty()) apiKey = "free";
+            apiKey = "free";
+        } else if (m_providerIndex == 1) {
+            if (cfId.size() > 32) cfId = cfId.substr(cfId.size() - 32);
+            if (cfId.size() < 32) { m_chatLog->setString("Ошибка: Укажи 32-значный Cloudflare ID!"); return; }
+            apiUrl = "https://cloudflare.com" + cfId + "/ai/v1/chat/completions";
+            model = "@cf/meta/llama-3.2-11b-vision-instruct";
+            sendImage = true;
         } else if (m_providerIndex == 2) {
             apiUrl = "https://vsegpt.ru";
             model = "openai/gpt-4o-mini";
@@ -186,10 +188,10 @@ public:
         g_aiControlling = true;
         m_abortBtn->setVisible(true);
         m_input->setString("");
-        m_previewLabel->setString("Ввод: ");
-        m_chatLog->setString(("Вы: " + userPrompt + "\n[Делаю скриншот и думаю...]").c_str());
+        m_previewLabel->setString("Текст: ");
+        m_chatLog->setString(("Вы: " + userPrompt + "\n[Думаю...]").c_str());
 
-        std::string base64Img = captureEditorScreenshotBase64();
+        std::string base64Img = sendImage ? captureEditorScreenshotBase64() : "";
         float camX = 300.f, camY = 105.f;
         if (auto editor = LevelEditorLayer::get()) {
             if (editor->m_objectLayer) {
@@ -199,7 +201,7 @@ public:
         }
 
         std::string sysPrompt = fmt::format(
-            "Ты ИИ-строитель уровней в Geometry Dash 2.208. Камера X={:.0f}, Y={:.0f}. "
+            "Ты ИИ-строитель уровней в Geometry Dash 2.208. Камера X={:.0f}, Y={:.0f} (1 блок=30). "
             "Отвечай ТОЛЬКО валидным JSON без markdown: {{\"reply\": \"ответ\", \"objects\": [{{\"id\": 1, \"x\": 300, \"y\": 105, \"rot\": 0}}]}}. "
             "ID: 1-блок, 8-шип, 9-мал.шип, 35-желт.батут, 36-желт.сфера, 12-куб, 13-корабль.", camX, camY
         );
@@ -212,18 +214,20 @@ public:
 
         matjson::Value messages = matjson::Value::array();
         messages.push(matjson::makeObject({{"role", "system"}, {"content", sysPrompt}}));
-        messages.push(matjson::makeObject({{"role", "user"}, {"content", contentArr}}));
+        if (sendImage) messages.push(matjson::makeObject({{"role", "user"}, {"content", contentArr}}));
+        else messages.push(matjson::makeObject({{"role", "user"}, {"content", userPrompt}}));
 
-        matjson::Value payload = matjson::Value::array();
-        payload = matjson::makeObject({{"model", model}, {"messages", messages}, {"max_tokens", 1000}});
+        matjson::Value payload = matjson::makeObject({{"model", model}, {"messages", messages}, {"max_tokens", 800}});
 
         web::WebRequest req;
+        req.userAgent("GeodeMod/1.0");
         req.header("Content-Type", "application/json");
-        req.header("Authorization", "Bearer " + apiKey);
+        if (m_providerIndex != 0) req.header("Authorization", "Bearer " + apiKey);
         req.bodyJSON(payload);
 
         m_webHolder.spawn(req.post(apiUrl), [this](web::WebResponse res) {
             if (!g_aiControlling) return;
+            std::string rawResp = res.string().unwrapOr("");
             if (res.ok()) {
                 auto jsonRes = res.json();
                 if (jsonRes.isOk()) {
@@ -231,25 +235,25 @@ public:
                     std::string aiText = "";
                     if (data["choices"].isArray() && !data["choices"].asArray().unwrap().empty()) {
                         aiText = data["choices"]["message"]["content"].asString().unwrapOr("");
+                    } else if (data["result"]["response"].isString()) {
+                        aiText = data["result"]["response"].asString().unwrapOr("");
                     }
-                    if (aiText.empty()) m_chatLog->setString("Пустой ответ от ИИ.");
+                    if (aiText.empty()) m_chatLog->setString(("Ответ: " + rawResp.substr(0, 110)).c_str());
                     else executeAIActions(aiText);
-                } else m_chatLog->setString("Ошибка чтения JSON ответа.");
+                } else executeAIActions(rawResp);
             } else {
-                std::string errBody = res.string().unwrapOr("");
                 std::string errMsg(res.errorMessage());
-                m_chatLog->setString(fmt::format("Код {}: {}\n{}", res.code(), errMsg, errBody.substr(0, 90)).c_str());
+                m_chatLog->setString(fmt::format("Код {}: {}\n{}", res.code(), errMsg, rawResp.substr(0, 90)).c_str());
             }
             finishAIControl();
         });
     }
-
     void executeAIActions(std::string rawText) {
         auto start = rawText.find('{');
         auto end = rawText.rfind('}');
-        if (start == std::string::npos || end == std::string::npos) { m_chatLog->setString(("ИИ: " + rawText).c_str()); return; }
+        if (start == std::string::npos || end == std::string::npos) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 120)).c_str()); return; }
         auto parsed = matjson::parse(rawText.substr(start, end - start + 1));
-        if (!parsed.isOk()) { m_chatLog->setString(("ИИ: " + rawText).c_str()); return; }
+        if (!parsed.isOk()) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 120)).c_str()); return; }
 
         auto root = parsed.unwrap();
         m_chatLog->setString(("ИИ: " + root["reply"].asString().unwrapOr("Готово!")).c_str());
@@ -317,7 +321,10 @@ class $modify(AIEditorUIHook, EditorUI) {
             circleBg->setScale(0.62f);
 
             brainSpr->setPosition(circleBg->getContentSize() / 2.f);
-            brainSpr->setScale(0.14f);
+            float targetPx = 24.f;
+            if (brainSpr->getContentSize().width > 0) {
+                brainSpr->setScale(targetPx / brainSpr->getContentSize().width);
+            }
             circleBg->addChild(brainSpr, 5);
 
             m_fields->crossSprite = CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png");
