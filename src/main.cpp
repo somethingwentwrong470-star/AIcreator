@@ -4,6 +4,7 @@
 #include <Geode/utils/web.hpp>
 #include <fstream>
 #include <sstream>
+#include <iomanip>
 #include <vector>
 
 using namespace geode::prelude;
@@ -17,6 +18,20 @@ std::string trimStr(const std::string& s) {
     return s.substr(a, b - a + 1);
 }
 
+std::string urlEncode(const std::string& value) {
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+    for (unsigned char c : value) {
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+        } else {
+            escaped << std::uppercase << '%' << std::setw(2) << int(c) << std::nouppercase;
+        }
+    }
+    return escaped.str();
+}
+
 void ensureConfigTemplate() {
     auto cfgPath = Mod::get()->getConfigDir() / "ai_config.txt";
     if (!std::filesystem::exists(cfgPath)) {
@@ -24,7 +39,6 @@ void ensureConfigTemplate() {
         if (out) {
             out << "CF_ID=\n";
             out << "CF_KEY=\n";
-            out << "CUSTOM_KEY=\n";
         }
     }
 }
@@ -53,55 +67,19 @@ std::string extractHex32(const std::string& raw) {
     if (hexOnly.size() >= 32) return hexOnly.substr(hexOnly.size() - 32);
     return hexOnly;
 }
-
-std::string encodeFileToBase64(const std::filesystem::path& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) return "";
-    std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    static const char* chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    std::string out;
-    int val = 0, valb = -6;
-    for (uint8_t c : bytes) {
-        val = (val << 8) + c;
-        valb += 8;
-        while (valb >= 0) {
-            out.push_back(chars[(val >> valb) & 0x3F]);
-            valb -= 6;
-        }
-    }
-    if (valb > -6) out.push_back(chars[((val << 8) >> (valb + 8)) & 0x3F]);
-    while (out.size() % 4) out.push_back('=');
-    return out;
-}
-
-std::string captureEditorScreenshotBase64() {
-    auto editor = LevelEditorLayer::get();
-    if (!editor) return "";
-    auto winSize = CCDirector::sharedDirector()->getWinSize();
-    auto rt = CCRenderTexture::create(static_cast<int>(winSize.width), static_cast<int>(winSize.height));
-    if (!rt) return "";
-    rt->beginWithClear(0.f, 0.f, 0.f, 1.f);
-    editor->visit();
-    rt->end();
-    auto tempPath = Mod::get()->getSaveDir() / "ai_screen.png";
-    if (rt->saveToFile(tempPath.string().c_str(), kCCImageFormatPNG)) {
-        return encodeFileToBase64(tempPath);
-    }
-    return "";
-}
 class AIChatWindow : public CCLayer {
 protected:
     CCPoint m_dragStart;
     bool m_isDragging = false;
     bool m_isResizing = false;
-    int m_providerIndex = 0; // 0: Cloudflare, 1: Pollinations, 2: VseGPT, 3: OpenRouter
+    bool m_useCloudflare = false; // false = Pollinations (без ключа), true = Cloudflare
 
     CCLayerColor* m_bg = nullptr;
     CCLayerColor* m_headerBg = nullptr;
+    CCLayerColor* m_inputBg = nullptr;
     CCLabelTTF* m_title = nullptr;
     CCLabelTTF* m_chatLog = nullptr;
-    CCLabelTTF* m_previewLabel = nullptr;
-    TextInput* m_input = nullptr;
+    CCTextFieldTTF* m_textField = nullptr;
     CCMenu* m_menu = nullptr;
     CCMenuItemSpriteExtra* m_sendBtn = nullptr;
     CCMenuItemSpriteExtra* m_abortBtn = nullptr;
@@ -117,47 +95,35 @@ public:
         return nullptr;
     }
 
-    const char* getProviderName() const {
-        const char* names[] = {"Cloudflare", "Pollinations", "VseGPT", "OpenRouter"};
-        return names[m_providerIndex % 4];
-    }
-
     bool init() override {
         if (!CCLayer::init()) return false;
         ensureConfigTemplate();
-        this->setContentSize({230.f, 175.f});
+        this->setContentSize({230.f, 165.f});
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
         this->setTouchPriority(-500);
 
-        m_bg = CCLayerColor::create({18, 20, 32, 235}, 230.f, 175.f);
+        m_bg = CCLayerColor::create({18, 20, 32, 235}, 230.f, 165.f);
         this->addChild(m_bg, 0);
         m_headerBg = CCLayerColor::create({32, 36, 56, 255}, 230.f, 22.f);
         this->addChild(m_headerBg, 1);
+        m_inputBg = CCLayerColor::create({35, 38, 52, 255}, 168.f, 24.f);
+        this->addChild(m_inputBg, 2);
 
         m_title = CCLabelTTF::create("ИИ Чат", "ru_font.ttf"_spr, 11);
         this->addChild(m_title, 5);
-        m_chatLog = CCLabelTTF::create("Готов к работе! Пиши запрос на русском:", "ru_font.ttf"_spr, 10, {214.f, 82.f}, kCCTextAlignmentLeft);
+        m_chatLog = CCLabelTTF::create("Pollinations готов (ключ не нужен)! Пиши по-русски:", "ru_font.ttf"_spr, 10, {214.f, 95.f}, kCCTextAlignmentLeft);
         this->addChild(m_chatLog, 5);
 
-        m_previewLabel = CCLabelTTF::create("Текст: ", "ru_font.ttf"_spr, 10, {214.f, 18.f}, kCCTextAlignmentLeft);
-        m_previewLabel->setColor({120, 230, 255});
-        this->addChild(m_previewLabel, 8);
-
-        m_input = TextInput::create(160.f, "Tap here...");
-        m_input->setCommonFilter(CommonFilter::Any);
-        m_input->setMaxCharCount(150);
-        m_input->setScale(0.95f);
-        this->addChild(m_input, 20);
-
-        m_input->setCallback([this](std::string const& str) {
-            m_previewLabel->setString(("Текст: " + str).c_str());
-        });
+        m_textField = CCTextFieldTTF::textFieldWithPlaceHolder("Нажми сюда и пиши...", {160.f, 20.f}, kCCTextAlignmentLeft, "ru_font.ttf"_spr, 11.f);
+        m_textField->setColorSpaceHolder({150, 150, 170});
+        m_textField->setColor({255, 255, 255});
+        this->addChild(m_textField, 10);
 
         m_menu = CCMenu::create();
         m_menu->setPosition({0.f, 0.f});
         m_menu->setTouchPriority(-505);
-        this->addChild(m_menu, 25);
+        this->addChild(m_menu, 15);
 
         auto sendSpr = ButtonSprite::create(">>", "goldFont.fnt", "GJ_button_01.png", 0.5f);
         m_sendBtn = CCMenuItemSpriteExtra::create(sendSpr, this, menu_selector(AIChatWindow::onSend));
@@ -168,7 +134,7 @@ public:
         m_abortBtn->setVisible(false);
         m_menu->addChild(m_abortBtn);
 
-        m_providerSpr = ButtonSprite::create(getProviderName(), "goldFont.fnt", "GJ_button_04.png", 0.4f);
+        m_providerSpr = ButtonSprite::create("Pollinations", "goldFont.fnt", "GJ_button_04.png", 0.4f);
         m_providerBtn = CCMenuItemSpriteExtra::create(m_providerSpr, this, menu_selector(AIChatWindow::onSwitchProvider));
         m_menu->addChild(m_providerBtn);
 
@@ -177,9 +143,9 @@ public:
     }
 
     void onSwitchProvider(CCObject*) {
-        m_providerIndex = (m_providerIndex + 1) % 4;
-        m_providerSpr->setString(getProviderName());
-        m_chatLog->setString(fmt::format("Выбран сервис: {}", getProviderName()).c_str());
+        m_useCloudflare = !m_useCloudflare;
+        m_providerSpr->setString(m_useCloudflare ? "Cloudflare" : "Pollinations");
+        m_chatLog->setString(m_useCloudflare ? "Выбран Cloudflare (нужны CF_ID и CF_KEY)" : "Выбран Pollinations (бесплатно без ключа)");
     }
 
     void updateLayoutPositions() {
@@ -189,60 +155,21 @@ public:
         m_headerBg->setPosition({0.f, s.height - 22.f});
         m_title->setPosition({32.f, s.height - 11.f});
         m_providerBtn->setPosition({s.width / 2.f + 12.f, s.height - 11.f});
-        m_chatLog->setDimensions({s.width - 16.f, s.height - 80.f});
-        m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 12.f});
-        m_previewLabel->setDimensions({s.width - 16.f, 18.f});
-        m_previewLabel->setPosition({s.width / 2.f, 40.f});
+        m_chatLog->setDimensions({s.width - 16.f, s.height - 62.f});
+        m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 4.f});
         float inputWidth = s.width - 58.f;
-        m_input->setPosition({inputWidth / 2.f + 10.f, 18.f});
+        m_inputBg->setContentSize({inputWidth, 24.f});
+        m_inputBg->setPosition({8.f, 6.f});
+        m_textField->setDimensions({inputWidth - 8.f, 18.f});
+        m_textField->setPosition({inputWidth / 2.f + 10.f, 17.f});
         m_sendBtn->setPosition({s.width - 24.f, 18.f});
         m_abortBtn->setPosition({s.width - 24.f, s.height - 11.f});
     }
     void onSend(CCObject*) {
-        std::string userPrompt = m_input->getString();
+        m_textField->detachWithIME();
+        std::string userPrompt = m_textField->getString() ? m_textField->getString() : "";
         if (userPrompt.empty() || g_aiControlling) return;
 
-        std::string cfIdRaw = readConfigValue("CF_ID");
-        if (cfIdRaw.empty()) cfIdRaw = Mod::get()->getSettingValue<std::string>("cf-account-id");
-        std::string cfId = extractHex32(cfIdRaw);
-
-        std::string apiKey = readConfigValue("CF_KEY");
-        if (apiKey.empty()) apiKey = trimStr(Mod::get()->getSettingValue<std::string>("api-key"));
-        std::string customKey = readConfigValue("CUSTOM_KEY");
-        if (!customKey.empty() && m_providerIndex >= 2) apiKey = customKey;
-
-        std::string apiUrl = "", model = "";
-        bool sendImage = false;
-
-        if (m_providerIndex == 0) {
-            if (cfId.size() != 32) {
-                m_chatLog->setString("Укажи 32-значный CF_ID в ai_config.txt или настройках!");
-                return;
-            }
-            apiUrl = "https://cloudflare.com" + cfId + "/ai/v1/chat/completions";
-            model = "@cf/meta/llama-3.2-11b-vision-instruct";
-            sendImage = true;
-        } else if (m_providerIndex == 1) {
-            apiUrl = "https://pollinations.ai";
-            model = "openai";
-            apiKey = "free";
-        } else if (m_providerIndex == 2) {
-            apiUrl = "https://vsegpt.ru";
-            model = "openai/gpt-4o-mini";
-        } else {
-            apiUrl = "https://openrouter.ai";
-            model = "openrouter/free";
-        }
-
-        if (apiKey.empty()) { m_chatLog->setString("Укажи API ключ в ai_config.txt или настройках!"); return; }
-
-        g_aiControlling = true;
-        m_abortBtn->setVisible(true);
-        m_input->setString("");
-        m_previewLabel->setString("Текст: ");
-        m_chatLog->setString(("Вы: " + userPrompt + "\n[Думаю...]").c_str());
-
-        std::string base64Img = sendImage ? captureEditorScreenshotBase64() : "";
         float camX = 300.f, camY = 105.f;
         if (auto editor = LevelEditorLayer::get()) {
             if (editor->m_objectLayer) {
@@ -257,23 +184,61 @@ public:
             "ID: 1-блок, 8-шип, 9-мал.шип, 35-желт.батут, 36-желт.сфера, 12-куб, 13-корабль.", camX, camY
         );
 
-        matjson::Value contentArr = matjson::Value::array();
-        contentArr.push(matjson::makeObject({{"type", "text"}, {"text", userPrompt}}));
-        if (!base64Img.empty()) {
-            contentArr.push(matjson::makeObject({{"type", "image_url"}, {"image_url", matjson::makeObject({{"url", "data:image/png;base64," + base64Img}})}}));
+        if (!m_useCloudflare) {
+            g_aiControlling = true;
+            m_abortBtn->setVisible(true);
+            m_chatLog->setString(("Вы: " + userPrompt + "\n[Pollinations думает...]").c_str());
+
+            std::string fullQuery = sysPrompt + "\nЗапрос пользователя: " + userPrompt;
+            std::string getUrl = "https://pollinations.ai" + urlEncode(fullQuery);
+
+            web::WebRequest req;
+            req.userAgent("Mozilla/5.0 GeodeMod/1.0");
+            m_webHolder.spawn(req.get(getUrl), [this](web::WebResponse res) {
+                if (!g_aiControlling) return;
+                std::string rawResp = res.string().unwrapOr("");
+                if (res.ok() && !rawResp.empty()) {
+                    executeAIActions(rawResp);
+                } else {
+                    std::string errMsg(res.errorMessage());
+                    m_chatLog->setString(fmt::format("Pollinations Код {}: {}\n{}", res.code(), errMsg, rawResp.substr(0, 90)).c_str());
+                }
+                finishAIControl();
+            });
+            return;
         }
+
+        std::string cfIdRaw = readConfigValue("CF_ID");
+        if (cfIdRaw.empty()) cfIdRaw = Mod::get()->getSettingValue<std::string>("cf-account-id");
+        std::string cfId = extractHex32(cfIdRaw);
+
+        std::string apiKey = readConfigValue("CF_KEY");
+        if (apiKey.empty()) apiKey = trimStr(Mod::get()->getSettingValue<std::string>("api-key"));
+
+        if (cfId.size() != 32) {
+            m_chatLog->setString("Укажи 32-значный CF_ID в ai_config.txt или настройках!");
+            return;
+        }
+        if (apiKey.empty()) {
+            m_chatLog->setString("Укажи CF_KEY в ai_config.txt или настройках!");
+            return;
+        }
+
+        g_aiControlling = true;
+        m_abortBtn->setVisible(true);
+        m_chatLog->setString(("Вы: " + userPrompt + "\n[Cloudflare думает...]").c_str());
+
+        std::string apiUrl = "https://cloudflare.com" + cfId + "/ai/run/@cf/meta/llama-3.1-8b-instruct";
 
         matjson::Value messages = matjson::Value::array();
         messages.push(matjson::makeObject({{"role", "system"}, {"content", sysPrompt}}));
-        if (sendImage) messages.push(matjson::makeObject({{"role", "user"}, {"content", contentArr}}));
-        else messages.push(matjson::makeObject({{"role", "user"}, {"content", userPrompt}}));
-
-        matjson::Value payload = matjson::makeObject({{"model", model}, {"messages", messages}, {"max_tokens", 800}});
+        messages.push(matjson::makeObject({{"role", "user"}, {"content", userPrompt}}));
+        matjson::Value payload = matjson::makeObject({{"messages", messages}});
 
         web::WebRequest req;
         req.userAgent("Mozilla/5.0 GeodeMod/1.0");
         req.header("Content-Type", "application/json");
-        if (m_providerIndex != 1) req.header("Authorization", "Bearer " + apiKey);
+        req.header("Authorization", "Bearer " + apiKey);
         req.bodyJSON(payload);
 
         m_webHolder.spawn(req.post(apiUrl), [this](web::WebResponse res) {
@@ -283,18 +248,13 @@ public:
                 auto jsonRes = res.json();
                 if (jsonRes.isOk()) {
                     auto data = jsonRes.unwrap();
-                    std::string aiText = "";
-                    if (data["choices"].isArray() && !data["choices"].asArray().unwrap().empty()) {
-                        aiText = data["choices"]["message"]["content"].asString().unwrapOr("");
-                    } else if (data["result"]["response"].isString()) {
-                        aiText = data["result"]["response"].asString().unwrapOr("");
-                    }
+                    std::string aiText = data["result"]["response"].asString().unwrapOr("");
                     if (aiText.empty()) m_chatLog->setString(("Ответ: " + rawResp.substr(0, 110)).c_str());
                     else executeAIActions(aiText);
                 } else executeAIActions(rawResp);
             } else {
                 std::string errMsg(res.errorMessage());
-                m_chatLog->setString(fmt::format("Код {}: {}\n{}", res.code(), errMsg, rawResp.substr(0, 90)).c_str());
+                m_chatLog->setString(fmt::format("CF Код {}: {}\n{}", res.code(), errMsg, rawResp.substr(0, 90)).c_str());
             }
             finishAIControl();
         });
@@ -328,7 +288,15 @@ public:
         if (!this->isVisible()) return false;
         CCPoint pos = this->convertTouchToNodeSpace(touch);
         CCSize s = this->getContentSize();
-        if (pos.x < 0 || pos.y < 0 || pos.x > s.width || pos.y > s.height) return false;
+        if (pos.x < 0 || pos.y < 0 || pos.x > s.width || pos.y > s.height) {
+            m_textField->detachWithIME();
+            return false;
+        }
+        if (pos.y < 36.f && pos.x < s.width - 42.f) {
+            m_textField->attachWithIME();
+            return true;
+        }
+        m_textField->detachWithIME();
         m_dragStart = touch->getLocation();
         if (pos.x > s.width - 22.f && pos.y < 22.f) m_isResizing = true;
         else if (pos.y > s.height - 22.f) m_isDragging = true;
@@ -400,6 +368,7 @@ class $modify(AIEditorUIHook, EditorUI) {
         EditorUI::onPlaytest(sender);
         if (m_fields->btnMenu) m_fields->btnMenu->setVisible(false);
         if (m_fields->chatWindow) m_fields->chatWindow->setVisible(false);
+        if (m_fields->crossSprite) m_fields->crossSprite->setVisible(false);
     }
 
     void onStopPlaytest(CCObject* sender) {
