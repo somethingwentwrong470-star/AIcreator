@@ -231,11 +231,12 @@ public:
         });
 
         web::WebRequest req;
+        req.verifyPeer(false);
         req.header("Content-Type", "application/json");
         req.header("Authorization", "Bearer " + apiKey);
         req.bodyJSON(payload);
 
-        m_webHolder.spawn(req.post(apiUrl), [this](web::WebResponse res) {
+        m_webHolder.spawn(req.post(apiUrl), [this, apiUrl](web::WebResponse res) {
             if (!g_aiControlling) return;
 
             if (res.ok()) {
@@ -249,11 +250,8 @@ public:
                 }
             } else {
                 std::string errBody = res.string().unwrapOr("");
-                if (res.code() == -6) {
-                    m_chatLog->setString("Нет связи с сервером (Код -6): проверь интернет или провайдера.");
-                } else {
-                    m_chatLog->setString(fmt::format("Ошибка {}:\n{}", res.code(), errBody.substr(0, 120)).c_str());
-                }
+                std::string errMsg = res.errorMessage();
+                m_chatLog->setString(fmt::format("Код {}: {}\nURL: {}\n{}", res.code(), errMsg, apiUrl, errBody.substr(0, 80)).c_str());
             }
             finishAIControl();
         });
