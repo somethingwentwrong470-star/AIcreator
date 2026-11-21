@@ -7,34 +7,55 @@
 	"version": "v1.0.0",
 	"id": "custom.ai_editor_assistant",
 	"name": "AI Editor Assistant",
-	"developer": "Creator",
-	"description": "ИИ-помощник в редакторе уровней на русском языке со скриншотами и автопостройкой.",
+	"developer": "CustomCreator",
+	"description": "Русскоязычный ИИ-помощник со зрением и управлением в редакторе уровней",
 	"resources": {
 		"sprites": [
 			"resources/brain.png"
 		],
-		"files": [
+		"fonts": [
 			"resources/ru_font.ttf"
 		]
 	},
 	"settings": {
-		"api-url": {
-			"name": "API URL (Endpoint)",
-			"description": "Адрес API (OpenAI-совместимый формат)",
+		"provider": {
 			"type": "string",
-			"default": "https://openai.com"
+			"name": "Провайдер ИИ",
+			"description": "Выбери сервис стрелочками",
+			"default": "Cloudflare",
+			"one-of": [
+				"Cloudflare",
+				"Pollinations",
+				"VseGPT",
+				"OpenRouter"
+			]
+		},
+		"cf-account-id": {
+			"type": "string",
+			"name": "Cloudflare Account ID",
+			"description": "32 символа (только буквы и цифры, нужен для Cloudflare)",
+			"default": "",
+			"filter": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 		},
 		"api-key": {
-			"name": "API Ключ",
-			"description": "Ваш секретный ключ от нейросети",
 			"type": "string",
-			"default": ""
+			"name": "API Ключ (Token)",
+			"description": "Твой API-ключ (для Pollinations впиши free)",
+			"default": "",
+			"filter": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
 		},
-		"model-name": {
-			"name": "Модель ИИ",
-			"description": "Например: gpt-4o, gemini-2.5-pro, claude-3-5-sonnet",
+		"model-preset": {
 			"type": "string",
-			"default": "gpt-4o"
+			"name": "Модель ИИ",
+			"description": "Выбери модель стрелочками (все спецсимволы подставятся сами)",
+			"default": "Cloudflare Llama 3.2 Vision",
+			"one-of": [
+				"Cloudflare Llama 3.2 Vision",
+				"Cloudflare Llama 3.1 8B",
+				"Pollinations OpenAI",
+				"VseGPT GPT-4o-mini",
+				"OpenRouter Free"
+			]
 		}
 	}
 }
