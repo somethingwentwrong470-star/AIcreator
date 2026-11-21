@@ -57,11 +57,10 @@ protected:
 
     CCLayerColor* m_bg = nullptr;
     CCLayerColor* m_headerBg = nullptr;
-    CCLayerColor* m_inputBg = nullptr;
     CCLabelTTF* m_title = nullptr;
     CCLabelTTF* m_chatLog = nullptr;
-    CCLabelTTF* m_inputDisplay = nullptr;
-    TextInput* m_hiddenInput = nullptr;
+    CCLabelTTF* m_previewLabel = nullptr;
+    TextInput* m_input = nullptr;
     CCMenu* m_menu = nullptr;
     CCMenuItemSpriteExtra* m_sendBtn = nullptr;
     CCMenuItemSpriteExtra* m_abortBtn = nullptr;
@@ -84,48 +83,40 @@ public:
 
     bool init() override {
         if (!CCLayer::init()) return false;
-        this->setContentSize({230.f, 165.f});
+        this->setContentSize({230.f, 175.f});
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
         this->setTouchPriority(-500);
 
-        m_bg = CCLayerColor::create({18, 20, 32, 235}, 230.f, 165.f);
+        m_bg = CCLayerColor::create({18, 20, 32, 235}, 230.f, 175.f);
         this->addChild(m_bg, 0);
         m_headerBg = CCLayerColor::create({32, 36, 56, 255}, 230.f, 22.f);
         this->addChild(m_headerBg, 1);
-        m_inputBg = CCLayerColor::create({35, 38, 52, 255}, 168.f, 24.f);
-        this->addChild(m_inputBg, 2);
 
         m_title = CCLabelTTF::create("ИИ Чат", "ru_font.ttf"_spr, 11);
         this->addChild(m_title, 5);
-        m_chatLog = CCLabelTTF::create("Выбери ИИ сверху и пиши запрос на русском!", "ru_font.ttf"_spr, 10, {214.f, 95.f}, kCCTextAlignmentLeft);
+        m_chatLog = CCLabelTTF::create("Выбери ИИ сверху и пиши запрос!", "ru_font.ttf"_spr, 10, {214.f, 82.f}, kCCTextAlignmentLeft);
         this->addChild(m_chatLog, 5);
 
-        m_hiddenInput = TextInput::create(160.f, "");
-        m_hiddenInput->setCommonFilter(CommonFilter::Any);
-        m_hiddenInput->setMaxCharCount(150);
-        m_hiddenInput->getInputNode()->setVisible(false);
-        if (auto bg = m_hiddenInput->getBGSprite()) bg->setVisible(false);
-        this->addChild(m_hiddenInput, 12);
+        m_previewLabel = CCLabelTTF::create("Ввод: ", "ru_font.ttf"_spr, 9, {214.f, 16.f}, kCCTextAlignmentLeft);
+        m_previewLabel->setColor({140, 220, 255});
+        this->addChild(m_previewLabel, 8);
 
-        m_inputDisplay = CCLabelTTF::create("Нажми сюда и пиши...", "ru_font.ttf"_spr, 11, {160.f, 18.f}, kCCTextAlignmentLeft);
-        m_inputDisplay->setColor({150, 150, 170});
-        this->addChild(m_inputDisplay, 11);
+        // Полностью видимый и нажимаемый TextInput
+        m_input = TextInput::create(160.f, "Tap here...");
+        m_input->setCommonFilter(CommonFilter::Any);
+        m_input->setMaxCharCount(150);
+        m_input->setScale(0.95f);
+        this->addChild(m_input, 20);
 
-        m_hiddenInput->setCallback([this](std::string const& str) {
-            if (str.empty()) {
-                m_inputDisplay->setString("Нажми сюда и пиши...");
-                m_inputDisplay->setColor({150, 150, 170});
-            } else {
-                m_inputDisplay->setString(str.c_str());
-                m_inputDisplay->setColor({255, 255, 255});
-            }
+        m_input->setCallback([this](std::string const& str) {
+            m_previewLabel->setString(("Ввод: " + str).c_str());
         });
 
         m_menu = CCMenu::create();
         m_menu->setPosition({0.f, 0.f});
         m_menu->setTouchPriority(-505);
-        this->addChild(m_menu, 15);
+        this->addChild(m_menu, 25);
 
         auto sendSpr = ButtonSprite::create(">>", "goldFont.fnt", "GJ_button_01.png", 0.5f);
         m_sendBtn = CCMenuItemSpriteExtra::create(sendSpr, this, menu_selector(AIChatWindow::onSend));
@@ -157,19 +148,17 @@ public:
         m_headerBg->setPosition({0.f, s.height - 22.f});
         m_title->setPosition({32.f, s.height - 11.f});
         m_providerBtn->setPosition({s.width / 2.f + 12.f, s.height - 11.f});
-        m_chatLog->setDimensions({s.width - 16.f, s.height - 62.f});
-        m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 4.f});
+        m_chatLog->setDimensions({s.width - 16.f, s.height - 80.f});
+        m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 12.f});
+        m_previewLabel->setDimensions({s.width - 16.f, 16.f});
+        m_previewLabel->setPosition({s.width / 2.f, 40.f});
         float inputWidth = s.width - 58.f;
-        m_inputBg->setContentSize({inputWidth, 24.f});
-        m_inputBg->setPosition({8.f, 6.f});
-        m_hiddenInput->setPosition({inputWidth / 2.f + 8.f, 18.f});
-        m_inputDisplay->setDimensions({inputWidth - 8.f, 18.f});
-        m_inputDisplay->setPosition({inputWidth / 2.f + 10.f, 17.f});
+        m_input->setPosition({inputWidth / 2.f + 10.f, 18.f});
         m_sendBtn->setPosition({s.width - 24.f, 18.f});
         m_abortBtn->setPosition({s.width - 24.f, s.height - 11.f});
     }
     void onSend(CCObject*) {
-        std::string userPrompt = m_hiddenInput->getString();
+        std::string userPrompt = m_input->getString();
         if (userPrompt.empty() || g_aiControlling) return;
 
         std::string cfId = Mod::get()->getSettingValue<std::string>("cf-account-id");
@@ -196,9 +185,8 @@ public:
 
         g_aiControlling = true;
         m_abortBtn->setVisible(true);
-        m_hiddenInput->setString("");
-        m_inputDisplay->setString("Нажми сюда и пиши...");
-        m_inputDisplay->setColor({150, 150, 170});
+        m_input->setString("");
+        m_previewLabel->setString("Ввод: ");
         m_chatLog->setString(("Вы: " + userPrompt + "\n[Делаю скриншот и думаю...]").c_str());
 
         std::string base64Img = captureEditorScreenshotBase64();
@@ -226,7 +214,8 @@ public:
         messages.push(matjson::makeObject({{"role", "system"}, {"content", sysPrompt}}));
         messages.push(matjson::makeObject({{"role", "user"}, {"content", contentArr}}));
 
-        matjson::Value payload = matjson::makeObject({{"model", model}, {"messages", messages}, {"max_tokens", 1000}});
+        matjson::Value payload = matjson::Value::array();
+        payload = matjson::makeObject({{"model", model}, {"messages", messages}, {"max_tokens", 1000}});
 
         web::WebRequest req;
         req.header("Content-Type", "application/json");
@@ -241,7 +230,7 @@ public:
                     auto data = jsonRes.unwrap();
                     std::string aiText = "";
                     if (data["choices"].isArray() && !data["choices"].asArray().unwrap().empty()) {
-                        aiText = data["choices"][0]["message"]["content"].asString().unwrapOr("");
+                        aiText = data["choices"]["message"]["content"].asString().unwrapOr("");
                     }
                     if (aiText.empty()) m_chatLog->setString("Пустой ответ от ИИ.");
                     else executeAIActions(aiText);
@@ -313,32 +302,50 @@ class $modify(AIEditorLayerHook, LevelEditorLayer) {
 };
 
 class $modify(AIEditorUIHook, EditorUI) {
-    struct Fields { AIChatWindow* chatWindow = nullptr; CCSprite* crossSprite = nullptr; };
+    struct Fields {
+        AIChatWindow* chatWindow = nullptr;
+        CCSprite* crossSprite = nullptr;
+        CCMenu* btnMenu = nullptr;
+    };
 
     bool init(LevelEditorLayer* editorLayer) {
         if (!EditorUI::init(editorLayer)) return false;
         auto winSize = CCDirector::sharedDirector()->getWinSize();
         auto brainSpr = CCSprite::create("brain.png"_spr);
         if (brainSpr) {
-            auto circleBtnSpr = CircleButtonSprite::create(brainSpr, CircleBaseColor::Green, CircleBaseSize::Small);
-            if (auto top = circleBtnSpr->getTopNode()) top->setScale(0.18f);
-            circleBtnSpr->setScale(0.85f);
+            auto circleBg = CCSprite::createWithSpriteFrameName("GJ_button_01.png");
+            circleBg->setScale(0.62f);
+
+            brainSpr->setPosition(circleBg->getContentSize() / 2.f);
+            brainSpr->setScale(0.14f);
+            circleBg->addChild(brainSpr, 5);
 
             m_fields->crossSprite = CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png");
             if (m_fields->crossSprite) {
-                m_fields->crossSprite->setPosition(circleBtnSpr->getContentSize() / 2.f);
-                m_fields->crossSprite->setScale(0.8f);
+                m_fields->crossSprite->setPosition(circleBg->getContentSize() / 2.f);
+                m_fields->crossSprite->setScale(0.85f);
                 m_fields->crossSprite->setVisible(false);
-                circleBtnSpr->addChild(m_fields->crossSprite, 10);
+                circleBg->addChild(m_fields->crossSprite, 10);
             }
 
-            auto aiBtn = CCMenuItemSpriteExtra::create(circleBtnSpr, this, menu_selector(AIEditorUIHook::onToggleAIChat));
-            auto menu = CCMenu::create();
-            menu->setPosition({195.f, winSize.height - 23.f});
-            menu->addChild(aiBtn);
-            this->addChild(menu, 100);
+            auto aiBtn = CCMenuItemSpriteExtra::create(circleBg, this, menu_selector(AIEditorUIHook::onToggleAIChat));
+            m_fields->btnMenu = CCMenu::create();
+            m_fields->btnMenu->setPosition({195.f, winSize.height - 23.f});
+            m_fields->btnMenu->addChild(aiBtn);
+            this->addChild(m_fields->btnMenu, 100);
         }
         return true;
+    }
+
+    void onPlaytest(CCObject* sender) {
+        EditorUI::onPlaytest(sender);
+        if (m_fields->btnMenu) m_fields->btnMenu->setVisible(false);
+        if (m_fields->chatWindow) m_fields->chatWindow->setVisible(false);
+    }
+
+    void onStopPlaytest(CCObject* sender) {
+        EditorUI::onStopPlaytest(sender);
+        if (m_fields->btnMenu) m_fields->btnMenu->setVisible(true);
     }
 
     void onToggleAIChat(CCObject*) {
