@@ -206,7 +206,7 @@ public:
 
         matjson::Value messages = matjson::Value::array();
         messages.push(matjson::makeObject({{"role", "system"}, {"content", sysPrompt}}));
-        messages.push(matjson::makeObject({{"role", "user"}, {"content", contentArr}}));
+        messages.push(matjson::makeObject({{"role", "user"}, {"content", userPrompt}}));
 
         if (!m_useCloudflare) {
             g_aiControlling = true;
