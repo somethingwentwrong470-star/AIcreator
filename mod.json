@@ -10,8 +10,10 @@
 	"developer": "CustomCreator",
 	"description": "Русскоязычный ИИ-помощник со зрением и управлением в редакторе уровней",
 	"resources": {
-		"files": [
-			"resources/brain.png",
+		"sprites": [
+			"resources/brain.png"
+		],
+		"fonts": [
 			"resources/ru_font.ttf"
 		]
 	},
@@ -31,21 +33,19 @@
 		"cf-account-id": {
 			"type": "string",
 			"name": "Cloudflare Account ID",
-			"description": "32 символа (только буквы и цифры, нужен для Cloudflare)",
-			"default": "",
-			"filter": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+			"description": "32 символа (нужен только для Cloudflare)",
+			"default": ""
 		},
 		"api-key": {
 			"type": "string",
 			"name": "API Ключ (Token)",
-			"description": "Твой API-ключ (для Pollinations впиши free)",
-			"default": "",
-			"filter": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
+			"description": "Твой API-ключ",
+			"default": ""
 		},
 		"model-preset": {
 			"type": "string",
 			"name": "Модель ИИ",
-			"description": "Выбери модель стрелочками (все спецсимволы подставятся сами)",
+			"description": "Выбери модель стрелочками",
 			"default": "Cloudflare Llama 3.2 Vision",
 			"one-of": [
 				"Cloudflare Llama 3.2 Vision",
@@ -57,4 +57,3 @@
 		}
 	}
 }
-
