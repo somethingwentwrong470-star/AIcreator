@@ -109,14 +109,15 @@ public:
 
         m_menu = CCMenu::create();
         m_menu->setPosition({0.f, 0.f});
-        m_menu->setTouchPriority(-505); // Чтобы кнопки нажимались поверх окна чата
+        m_menu->setTouchPriority(-505);
         this->addChild(m_menu, 15);
 
         auto sendSpr = ButtonSprite::create(">>", "goldFont.fnt", "GJ_button_01.png", 0.5f);
         m_sendBtn = CCMenuItemSpriteExtra::create(sendSpr, this, menu_selector(AIChatWindow::onSend));
         m_menu->addChild(m_sendBtn);
 
-        auto abortSpr = ButtonSprite::create("Прервать", "goldFont.fnt", "GJ_button_06.png", 0.45f);
+        // Компактная красная кнопка STOP латиницей — никогда не растянется за экран
+        auto abortSpr = ButtonSprite::create("STOP", "goldFont.fnt", "GJ_button_06.png", 0.42f);
         m_abortBtn = CCMenuItemSpriteExtra::create(abortSpr, this, menu_selector(AIChatWindow::onAbort));
         m_abortBtn->setVisible(false);
         m_menu->addChild(m_abortBtn);
@@ -131,7 +132,7 @@ public:
         m_headerBg->setContentSize({s.width, 22.f});
         m_headerBg->setPosition({0.f, s.height - 22.f});
         
-        m_title->setPosition({s.width / 2.f, s.height - 11.f});
+        m_title->setPosition({s.width / 2.f - 15.f, s.height - 11.f});
         m_chatLog->setDimensions({s.width - 16.f, s.height - 62.f});
         m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 4.f});
         
@@ -143,7 +144,7 @@ public:
         m_textField->setPosition({inputWidth / 2.f + 10.f, 17.f});
         
         m_sendBtn->setPosition({s.width - 24.f, 18.f});
-        m_abortBtn->setPosition({s.width - 38.f, s.height - 11.f});
+        m_abortBtn->setPosition({s.width - 24.f, s.height - 11.f});
     }
 
     void onSend(CCObject*) {
@@ -225,7 +226,12 @@ public:
                     m_chatLog->setString("Ошибка чтения ответа от сервера.");
                 }
             } else {
-                m_chatLog->setString(fmt::format("Ошибка API (Код {}): проверь URL и ключ.", res.code()).c_str());
+                std::string errBody = res.string().unwrapOr("");
+                if (res.code() == -6) {
+                    m_chatLog->setString("Нет связи с сервером (Код -6): проверь API URL или интернет.");
+                } else {
+                    m_chatLog->setString(fmt::format("Ошибка {}:\n{}", res.code(), errBody.substr(0, 120)).c_str());
+                }
             }
             finishAIControl();
         });
