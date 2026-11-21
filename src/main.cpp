@@ -104,7 +104,7 @@ public:
         m_hiddenInput = TextInput::create(160.f, "");
         m_hiddenInput->setCommonFilter(CommonFilter::Any);
         m_hiddenInput->setMaxCharCount(150);
-        m_hiddenInput->setOpacity(0);
+        m_hiddenInput->getInputNode()->setVisible(false);
         if (auto bg = m_hiddenInput->getBGSprite()) bg->setVisible(false);
         this->addChild(m_hiddenInput, 12);
 
