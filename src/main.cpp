@@ -116,7 +116,6 @@ public:
         m_sendBtn = CCMenuItemSpriteExtra::create(sendSpr, this, menu_selector(AIChatWindow::onSend));
         m_menu->addChild(m_sendBtn);
 
-        // Компактная красная кнопка STOP латиницей — никогда не растянется за экран
         auto abortSpr = ButtonSprite::create("STOP", "goldFont.fnt", "GJ_button_06.png", 0.42f);
         m_abortBtn = CCMenuItemSpriteExtra::create(abortSpr, this, menu_selector(AIChatWindow::onAbort));
         m_abortBtn->setVisible(false);
@@ -152,14 +151,37 @@ public:
         std::string userPrompt = m_textField->getString() ? m_textField->getString() : "";
         if (userPrompt.empty() || g_aiControlling) return;
 
-        std::string apiUrl = Mod::get()->getSettingValue<std::string>("api-url");
+        std::string provider = Mod::get()->getSettingValue<std::string>("provider");
+        std::string cfId = Mod::get()->getSettingValue<std::string>("cf-account-id");
         std::string apiKey = Mod::get()->getSettingValue<std::string>("api-key");
-        std::string model = Mod::get()->getSettingValue<std::string>("model-name");
+        std::string preset = Mod::get()->getSettingValue<std::string>("model-preset");
+
+        std::string apiUrl = "";
+        if (provider == "Cloudflare") {
+            if (cfId.empty()) {
+                m_chatLog->setString("Ошибка: Укажи Cloudflare Account ID в настройках мода!");
+                return;
+            }
+            apiUrl = "https://cloudflare.com" + cfId + "/ai/v1/chat/completions";
+        } else if (provider == "Pollinations") {
+            apiUrl = "https://pollinations.ai";
+            if (apiKey.empty()) apiKey = "free";
+        } else if (provider == "VseGPT") {
+            apiUrl = "https://vsegpt.ru";
+        } else if (provider == "OpenRouter") {
+            apiUrl = "https://openrouter.ai";
+        }
 
         if (apiKey.empty()) {
-            m_chatLog->setString("Ошибка: Укажи API Ключ в настройках мода Geode!");
+            m_chatLog->setString("Ошибка: Укажи API Ключ (Token) в настройках мода!");
             return;
         }
+
+        std::string model = "@cf/meta/llama-3.2-11b-vision-instruct";
+        if (preset == "Cloudflare Llama 3.1 8B") model = "@cf/meta/llama-3.1-8b-instruct";
+        else if (preset == "Pollinations OpenAI") model = "openai";
+        else if (preset == "VseGPT GPT-4o-mini") model = "openai/gpt-4o-mini";
+        else if (preset == "OpenRouter Free") model = "openrouter/free";
 
         g_aiControlling = true;
         m_abortBtn->setVisible(true);
@@ -228,7 +250,7 @@ public:
             } else {
                 std::string errBody = res.string().unwrapOr("");
                 if (res.code() == -6) {
-                    m_chatLog->setString("Нет связи с сервером (Код -6): проверь API URL или интернет.");
+                    m_chatLog->setString("Нет связи с сервером (Код -6): проверь интернет или провайдера.");
                 } else {
                     m_chatLog->setString(fmt::format("Ошибка {}:\n{}", res.code(), errBody.substr(0, 120)).c_str());
                 }
