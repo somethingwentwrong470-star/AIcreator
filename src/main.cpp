@@ -248,7 +248,6 @@ public:
         });
 
         web::WebRequest req;
-        req.verifyPeer(false);
         req.header("Content-Type", "application/json");
         req.header("Authorization", "Bearer " + apiKey);
         req.bodyJSON(payload);
@@ -267,12 +266,12 @@ public:
                 }
             } else {
                 std::string errBody = res.string().unwrapOr("");
-                std::string errMsg = res.errorMessage();
+                std::string errMsg(res.errorMessage());
                 m_chatLog->setString(fmt::format("Код {}: {}\nURL: {}\n{}", res.code(), errMsg, apiUrl, errBody.substr(0, 80)).c_str());
             }
             finishAIControl();
         });
-    }
+}
     void executeAIActions(std::string rawText) {
         auto start = rawText.find('{');
         auto end = rawText.rfind('}');
@@ -385,6 +384,7 @@ class $modify(AIEditorUIHook, EditorUI) {
         auto winSize = CCDirector::sharedDirector()->getWinSize();
         auto brainSpr = CCSprite::create("brain.png"_spr);
         if (brainSpr) {
+            brainSpr->setScale(0.18f);
             auto circleBtnSpr = CircleButtonSprite::create(
                 brainSpr, CircleBaseColor::Green, CircleBaseSize::Small
             );
