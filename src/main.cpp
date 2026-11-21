@@ -50,6 +50,7 @@ protected:
     CCPoint m_dragStart;
     bool m_isDragging = false;
     bool m_isResizing = false;
+    int m_providerIndex = 0; // 0: Cloudflare, 1: Pollinations, 2: VseGPT, 3: OpenRouter
     
     CCLayerColor* m_bg = nullptr;
     CCLayerColor* m_headerBg = nullptr;
@@ -60,6 +61,8 @@ protected:
     CCMenu* m_menu = nullptr;
     CCMenuItemSpriteExtra* m_sendBtn = nullptr;
     CCMenuItemSpriteExtra* m_abortBtn = nullptr;
+    CCMenuItemSpriteExtra* m_providerBtn = nullptr;
+    ButtonSprite* m_providerSpr = nullptr;
     
     async::TaskHolder<web::WebResponse> m_webHolder;
 
@@ -72,6 +75,11 @@ public:
         }
         CC_SAFE_DELETE(ret);
         return nullptr;
+    }
+
+    const char* getProviderName() const {
+        const char* names[] = {"Cloudflare", "Pollinations", "VseGPT", "OpenRouter"};
+        return names[m_providerIndex % 4];
     }
 
     bool init() override {
@@ -91,11 +99,11 @@ public:
         m_inputBg = CCLayerColor::create({35, 38, 52, 255}, 168.f, 24.f);
         this->addChild(m_inputBg, 2);
 
-        m_title = CCLabelTTF::create("ИИ Ассистент", "ru_font.ttf"_spr, 11);
+        m_title = CCLabelTTF::create("ИИ Чат", "ru_font.ttf"_spr, 11);
         this->addChild(m_title, 5);
 
         m_chatLog = CCLabelTTF::create(
-            "Напиши запрос на русском (например: 'построй тройной шип').",
+            "Нажми на кнопку сверху, чтобы выбрать ИИ, и пиши запрос!",
             "ru_font.ttf"_spr, 10, {214.f, 95.f}, kCCTextAlignmentLeft
         );
         this->addChild(m_chatLog, 5);
@@ -121,8 +129,18 @@ public:
         m_abortBtn->setVisible(false);
         m_menu->addChild(m_abortBtn);
 
+        m_providerSpr = ButtonSprite::create(getProviderName(), "goldFont.fnt", "GJ_button_04.png", 0.4f);
+        m_providerBtn = CCMenuItemSpriteExtra::create(m_providerSpr, this, menu_selector(AIChatWindow::onSwitchProvider));
+        m_menu->addChild(m_providerBtn);
+
         updateLayoutPositions();
         return true;
+    }
+
+    void onSwitchProvider(CCObject*) {
+        m_providerIndex = (m_providerIndex + 1) % 4;
+        m_providerSpr->setString(getProviderName());
+        m_chatLog->setString(fmt::format("Выбран сервис: {}", getProviderName()).c_str());
     }
 
     void updateLayoutPositions() {
@@ -131,7 +149,8 @@ public:
         m_headerBg->setContentSize({s.width, 22.f});
         m_headerBg->setPosition({0.f, s.height - 22.f});
         
-        m_title->setPosition({s.width / 2.f - 15.f, s.height - 11.f});
+        m_title->setPosition({32.f, s.height - 11.f});
+        m_providerBtn->setPosition({s.width / 2.f + 12.f, s.height - 11.f});
         m_chatLog->setDimensions({s.width - 16.f, s.height - 62.f});
         m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 4.f});
         
@@ -151,37 +170,35 @@ public:
         std::string userPrompt = m_textField->getString() ? m_textField->getString() : "";
         if (userPrompt.empty() || g_aiControlling) return;
 
-        std::string provider = Mod::get()->getSettingValue<std::string>("provider");
         std::string cfId = Mod::get()->getSettingValue<std::string>("cf-account-id");
         std::string apiKey = Mod::get()->getSettingValue<std::string>("api-key");
-        std::string preset = Mod::get()->getSettingValue<std::string>("model-preset");
 
         std::string apiUrl = "";
-        if (provider == "Cloudflare") {
+        std::string model = "";
+
+        if (m_providerIndex == 0) { // Cloudflare
             if (cfId.empty()) {
                 m_chatLog->setString("Ошибка: Укажи Cloudflare Account ID в настройках мода!");
                 return;
             }
             apiUrl = "https://cloudflare.com" + cfId + "/ai/v1/chat/completions";
-        } else if (provider == "Pollinations") {
+            model = "@cf/meta/llama-3.2-11b-vision-instruct";
+        } else if (m_providerIndex == 1) { // Pollinations
             apiUrl = "https://pollinations.ai";
+            model = "openai";
             if (apiKey.empty()) apiKey = "free";
-        } else if (provider == "VseGPT") {
+        } else if (m_providerIndex == 2) { // VseGPT
             apiUrl = "https://vsegpt.ru";
-        } else if (provider == "OpenRouter") {
+            model = "openai/gpt-4o-mini";
+        } else { // OpenRouter
             apiUrl = "https://openrouter.ai";
+            model = "openrouter/free";
         }
 
         if (apiKey.empty()) {
             m_chatLog->setString("Ошибка: Укажи API Ключ (Token) в настройках мода!");
             return;
         }
-
-        std::string model = "@cf/meta/llama-3.2-11b-vision-instruct";
-        if (preset == "Cloudflare Llama 3.1 8B") model = "@cf/meta/llama-3.1-8b-instruct";
-        else if (preset == "Pollinations OpenAI") model = "openai";
-        else if (preset == "VseGPT GPT-4o-mini") model = "openai/gpt-4o-mini";
-        else if (preset == "OpenRouter Free") model = "openrouter/free";
 
         g_aiControlling = true;
         m_abortBtn->setVisible(true);
