@@ -10,10 +10,8 @@
 	"developer": "CustomCreator",
 	"description": "AI Editor Assistant",
 	"resources": {
-		"sprites": [
-			"resources/brain.png"
-		],
-		"fonts": [
+		"files": [
+			"resources/brain.png",
 			"resources/ru_font.ttf"
 		]
 	},
