@@ -8,7 +8,7 @@
 	"id": "custom.ai_editor_assistant",
 	"name": "AI Editor Assistant",
 	"developer": "CustomCreator",
-	"description": "Русскоязычный ИИ-помощник со зрением и управлением в редакторе уровней",
+	"description": "AI Editor Assistant",
 	"resources": {
 		"sprites": [
 			"resources/brain.png"
@@ -21,13 +21,11 @@
 		"cf-account-id": {
 			"type": "string",
 			"name": "Cloudflare Account ID",
-			"description": "32 символа (нужен только для Cloudflare)",
 			"default": ""
 		},
 		"api-key": {
 			"type": "string",
-			"name": "API Ключ (Token)",
-			"description": "Твой API-ключ (для Pollinations можно оставить пустым)",
+			"name": "API Key",
 			"default": ""
 		}
 	}
