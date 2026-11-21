@@ -10,10 +10,8 @@
 	"developer": "CustomCreator",
 	"description": "Русскоязычный ИИ-помощник со зрением и управлением в редакторе уровней",
 	"resources": {
-		"sprites": [
-			"resources/brain.png"
-		],
-		"fonts": [
+		"files": [
+			"resources/brain.png",
 			"resources/ru_font.ttf"
 		]
 	},
@@ -59,3 +57,4 @@
 		}
 	}
 }
+
