@@ -3,17 +3,61 @@
 #include <Geode/modify/LevelEditorLayer.hpp>
 #include <Geode/utils/web.hpp>
 #include <fstream>
+#include <sstream>
 #include <vector>
 
 using namespace geode::prelude;
 
 bool g_aiControlling = false;
 
+std::string trimStr(const std::string& s) {
+    size_t a = s.find_first_not_of(" \t\r\n");
+    if (a == std::string::npos) return "";
+    size_t b = s.find_last_not_of(" \t\r\n");
+    return s.substr(a, b - a + 1);
+}
+
+void ensureConfigTemplate() {
+    auto cfgPath = Mod::get()->getConfigDir() / "ai_config.txt";
+    if (!std::filesystem::exists(cfgPath)) {
+        std::ofstream out(cfgPath);
+        if (out) {
+            out << "CF_ID=\n";
+            out << "CF_KEY=\n";
+            out << "CUSTOM_KEY=\n";
+        }
+    }
+}
+
+std::string readConfigValue(const std::string& keyName) {
+    ensureConfigTemplate();
+    auto cfgPath = Mod::get()->getConfigDir() / "ai_config.txt";
+    std::ifstream in(cfgPath);
+    std::string line;
+    while (std::getline(in, line)) {
+        line = trimStr(line);
+        if (line.rfind(keyName + "=", 0) == 0) {
+            return trimStr(line.substr(keyName.size() + 1));
+        }
+    }
+    return "";
+}
+
+std::string extractHex32(const std::string& raw) {
+    std::string hexOnly;
+    for (char c : raw) {
+        if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+            hexOnly.push_back(static_cast<char>(std::tolower(c)));
+        }
+    }
+    if (hexOnly.size() >= 32) return hexOnly.substr(hexOnly.size() - 32);
+    return hexOnly;
+}
+
 std::string encodeFileToBase64(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
     if (!file) return "";
     std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    
     static const char* chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     std::string out;
     int val = 0, valb = -6;
@@ -33,15 +77,12 @@ std::string encodeFileToBase64(const std::filesystem::path& path) {
 std::string captureEditorScreenshotBase64() {
     auto editor = LevelEditorLayer::get();
     if (!editor) return "";
-
     auto winSize = CCDirector::sharedDirector()->getWinSize();
     auto rt = CCRenderTexture::create(static_cast<int>(winSize.width), static_cast<int>(winSize.height));
     if (!rt) return "";
-
     rt->beginWithClear(0.f, 0.f, 0.f, 1.f);
     editor->visit();
     rt->end();
-
     auto tempPath = Mod::get()->getSaveDir() / "ai_screen.png";
     if (rt->saveToFile(tempPath.string().c_str(), kCCImageFormatPNG)) {
         return encodeFileToBase64(tempPath);
@@ -53,7 +94,7 @@ protected:
     CCPoint m_dragStart;
     bool m_isDragging = false;
     bool m_isResizing = false;
-    int m_providerIndex = 0; // 0: Pollinations (без ключа), 1: Cloudflare, 2: VseGPT, 3: OpenRouter
+    int m_providerIndex = 0; // 0: Cloudflare, 1: Pollinations, 2: VseGPT, 3: OpenRouter
 
     CCLayerColor* m_bg = nullptr;
     CCLayerColor* m_headerBg = nullptr;
@@ -77,12 +118,13 @@ public:
     }
 
     const char* getProviderName() const {
-        const char* names[] = {"Pollinations", "Cloudflare", "VseGPT", "OpenRouter"};
+        const char* names[] = {"Cloudflare", "Pollinations", "VseGPT", "OpenRouter"};
         return names[m_providerIndex % 4];
     }
 
     bool init() override {
         if (!CCLayer::init()) return false;
+        ensureConfigTemplate();
         this->setContentSize({230.f, 175.f});
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
@@ -95,7 +137,7 @@ public:
 
         m_title = CCLabelTTF::create("ИИ Чат", "ru_font.ttf"_spr, 11);
         this->addChild(m_title, 5);
-        m_chatLog = CCLabelTTF::create("Pollinations готов (ключ не нужен)! Пиши запрос:", "ru_font.ttf"_spr, 10, {214.f, 82.f}, kCCTextAlignmentLeft);
+        m_chatLog = CCLabelTTF::create("Готов к работе! Пиши запрос на русском:", "ru_font.ttf"_spr, 10, {214.f, 82.f}, kCCTextAlignmentLeft);
         this->addChild(m_chatLog, 5);
 
         m_previewLabel = CCLabelTTF::create("Текст: ", "ru_font.ttf"_spr, 10, {214.f, 18.f}, kCCTextAlignmentLeft);
@@ -160,21 +202,30 @@ public:
         std::string userPrompt = m_input->getString();
         if (userPrompt.empty() || g_aiControlling) return;
 
-        std::string cfId = Mod::get()->getSettingValue<std::string>("cf-account-id");
-        std::string apiKey = Mod::get()->getSettingValue<std::string>("api-key");
+        std::string cfIdRaw = readConfigValue("CF_ID");
+        if (cfIdRaw.empty()) cfIdRaw = Mod::get()->getSettingValue<std::string>("cf-account-id");
+        std::string cfId = extractHex32(cfIdRaw);
+
+        std::string apiKey = readConfigValue("CF_KEY");
+        if (apiKey.empty()) apiKey = trimStr(Mod::get()->getSettingValue<std::string>("api-key"));
+        std::string customKey = readConfigValue("CUSTOM_KEY");
+        if (!customKey.empty() && m_providerIndex >= 2) apiKey = customKey;
+
         std::string apiUrl = "", model = "";
         bool sendImage = false;
 
         if (m_providerIndex == 0) {
-            apiUrl = "https://pollinations.ai";
-            model = "openai";
-            apiKey = "free";
-        } else if (m_providerIndex == 1) {
-            if (cfId.size() > 32) cfId = cfId.substr(cfId.size() - 32);
-            if (cfId.size() < 32) { m_chatLog->setString("Ошибка: Укажи 32-значный Cloudflare ID!"); return; }
+            if (cfId.size() != 32) {
+                m_chatLog->setString("Укажи 32-значный CF_ID в ai_config.txt или настройках!");
+                return;
+            }
             apiUrl = "https://cloudflare.com" + cfId + "/ai/v1/chat/completions";
             model = "@cf/meta/llama-3.2-11b-vision-instruct";
             sendImage = true;
+        } else if (m_providerIndex == 1) {
+            apiUrl = "https://pollinations.ai";
+            model = "openai";
+            apiKey = "free";
         } else if (m_providerIndex == 2) {
             apiUrl = "https://vsegpt.ru";
             model = "openai/gpt-4o-mini";
@@ -183,7 +234,7 @@ public:
             model = "openrouter/free";
         }
 
-        if (apiKey.empty()) { m_chatLog->setString("Ошибка: Укажи API Ключ в настройках!"); return; }
+        if (apiKey.empty()) { m_chatLog->setString("Укажи API ключ в ai_config.txt или настройках!"); return; }
 
         g_aiControlling = true;
         m_abortBtn->setVisible(true);
@@ -220,9 +271,9 @@ public:
         matjson::Value payload = matjson::makeObject({{"model", model}, {"messages", messages}, {"max_tokens", 800}});
 
         web::WebRequest req;
-        req.userAgent("GeodeMod/1.0");
+        req.userAgent("Mozilla/5.0 GeodeMod/1.0");
         req.header("Content-Type", "application/json");
-        if (m_providerIndex != 0) req.header("Authorization", "Bearer " + apiKey);
+        if (m_providerIndex != 1) req.header("Authorization", "Bearer " + apiKey);
         req.bodyJSON(payload);
 
         m_webHolder.spawn(req.post(apiUrl), [this](web::WebResponse res) {
@@ -317,25 +368,26 @@ class $modify(AIEditorUIHook, EditorUI) {
         auto winSize = CCDirector::sharedDirector()->getWinSize();
         auto brainSpr = CCSprite::create("brain.png"_spr);
         if (brainSpr) {
-            auto circleBg = CCSprite::createWithSpriteFrameName("GJ_button_01.png");
-            circleBg->setScale(0.62f);
+            auto dummyNode = CCNode::create();
+            dummyNode->setContentSize({30.f, 30.f});
+            auto circleBtnSpr = CircleButtonSprite::create(dummyNode, CircleBaseColor::Green, CircleBaseSize::Small);
+            circleBtnSpr->setScale(0.85f);
 
-            brainSpr->setPosition(circleBg->getContentSize() / 2.f);
-            float targetPx = 24.f;
+            brainSpr->setPosition(circleBtnSpr->getContentSize() / 2.f);
             if (brainSpr->getContentSize().width > 0) {
-                brainSpr->setScale(targetPx / brainSpr->getContentSize().width);
+                brainSpr->setScale(22.f / brainSpr->getContentSize().width);
             }
-            circleBg->addChild(brainSpr, 5);
+            circleBtnSpr->addChild(brainSpr, 5);
 
             m_fields->crossSprite = CCSprite::createWithSpriteFrameName("GJ_deleteIcon_001.png");
             if (m_fields->crossSprite) {
-                m_fields->crossSprite->setPosition(circleBg->getContentSize() / 2.f);
-                m_fields->crossSprite->setScale(0.85f);
+                m_fields->crossSprite->setPosition(circleBtnSpr->getContentSize() / 2.f);
+                m_fields->crossSprite->setScale(0.8f);
                 m_fields->crossSprite->setVisible(false);
-                circleBg->addChild(m_fields->crossSprite, 10);
+                circleBtnSpr->addChild(m_fields->crossSprite, 10);
             }
 
-            auto aiBtn = CCMenuItemSpriteExtra::create(circleBg, this, menu_selector(AIEditorUIHook::onToggleAIChat));
+            auto aiBtn = CCMenuItemSpriteExtra::create(circleBtnSpr, this, menu_selector(AIEditorUIHook::onToggleAIChat));
             m_fields->btnMenu = CCMenu::create();
             m_fields->btnMenu->setPosition({195.f, winSize.height - 23.f});
             m_fields->btnMenu->addChild(aiBtn);
