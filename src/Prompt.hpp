@@ -1,18 +1,40 @@
 #pragma once
 #include <Geode/Geode.hpp>
 #include <string>
+#include <vector>
+
+inline std::string getSelectedObjectsContext() {
+    auto editor = LevelEditorLayer::get();
+    if (!editor || !editor->m_editorUI) return "Выделенных объектов нет.";
+
+    auto selected = editor->m_editorUI->getSelectedObjects();
+    if (!selected || selected->count() == 0) return "Выделенных объектов нет.";
+
+    std::string list;
+    int limit = std::min<int>(selected->count(), 35);
+    for (int i = 0; i < limit; ++i) {
+        if (auto obj = static_cast<GameObject*>(selected->objectAtIndex(i))) {
+            list += fmt::format("[id:{}, x:{:.0f}, y:{:.0f}, rot:{:.0f}] ",
+                obj->m_objectID, obj->getPositionX(), obj->getPositionY(), obj->getRotation());
+        }
+    }
+    return fmt::format("Выделенные игроком объекты ({} шт.): {}", selected->count(), list);
+}
 
 inline std::string buildAISystemPrompt(float camX, float camY) {
     float startX = std::max(300.f, std::round(camX / 30.f) * 30.f);
     float startY = std::max(120.f, std::round(camY / 30.f) * 30.f);
+    std::string selContext = getSelectedObjectsContext();
 
     return fmt::format(
         "Ты ИИ-строитель уровней в Geometry Dash 2.208. "
-        "ГЕОМЕТРИЯ СЕТКИ: 1 клетка = 30 единиц. Белая линия пола в редакторе находится на Y=105! "
-        "НИКОГДА не ставь Y < 120 (иначе объект окажется под землей ниже белой линии!). "
-        "Первый этаж прямо на полу: Y=120. Второй этаж: Y=150, третий: Y=180, четвертый: Y=210. "
-        "Для обычных блоков всегда ставь rot=0. "
-        "Текущая точка камеры: X={:.0f}, Y={:.0f}. Строй вправо от X={:.0f} с шагом 30, 60 или 90. "
+        "ГЕОМЕТРИЯ СЕТКИ: 1 клетка = 30 единиц. Белая линия пола на Y=105! "
+        "НИКОГДА не ставь Y < 120 (иначе объект уйдет под землю!). "
+        "Первый этаж на полу: Y=120, второй: Y=150, третий: Y=180, четвертый: Y=210. "
+        "Для обычных блоков ставь rot=0. "
+        "Текущая камера: X={:.0f}, Y={:.0f}. Строй вправо от X={:.0f} с шагом 30, 60 или 90. "
+        "КОНТЕКСТ ВЫДЕЛЕНИЯ: {}. "
+        "Если игрок спрашивает про выделенные объекты или просит их продолжить/достроить, опирайся на их координаты и id. "
         "Отвечай ТОЛЬКО валидным JSON без markdown: "
         "{{\"reply\": \"краткий ответ\", \"objects\": [{{\"id\": 1, \"x\": 300, \"y\": 120, \"rot\": 0}}]}}. "
         "БАЗА ID: "
@@ -28,6 +50,6 @@ inline std::string buildAISystemPrompt(float camX, float camY) {
         "{{\"id\": 8, \"x\": 390, \"y\": 120, \"rot\": 0}}, "
         "{{\"id\": 36, \"x\": 420, \"y\": 180, \"rot\": 0}}, "
         "{{\"id\": 1, \"x\": 510, \"y\": 150, \"rot\": 0}}]}}.",
-        startX, startY, startX
+        startX, startY, startX, selContext
     );
 }
