@@ -51,6 +51,15 @@ class $modify(AIEditorUIHook, EditorUI) {
         }
         return true;
     }
+    void updateObjectInfoLabel() {
+        EditorUI::updateObjectInfoLabel();
+        if (m_objectInfoLabel && m_selectedObject) {
+            std::string current = m_objectInfoLabel->getString();
+            m_objectInfoLabel->setString(
+                fmt::format("{}\nObject ID: {}", current, m_selectedObject->m_objectID).c_str()
+            );
+        }
+    }
 
     void onPlaytest(CCObject* sender) {
         EditorUI::onPlaytest(sender);
