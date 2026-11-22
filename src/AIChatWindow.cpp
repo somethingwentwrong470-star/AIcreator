@@ -1,5 +1,6 @@
 #include "AIChatWindow.hpp"
 #include "Config.hpp"
+#include "Prompt.hpp"
 #include <Geode/modify/LevelEditorLayer.hpp>
 
 AIChatWindow::~AIChatWindow() {
@@ -109,11 +110,7 @@ void AIChatWindow::onSend(CCObject*) {
         }
     }
 
-    std::string sysPrompt = fmt::format(
-        "Ты ИИ-строитель уровней в Geometry Dash 2.208. Камера X={:.0f}, Y={:.0f} (1 блок=30). "
-        "Отвечай ТОЛЬКО валидным JSON без markdown: {{\"reply\": \"ответ\", \"objects\": [{{\"id\": 1, \"x\": 300, \"y\": 105, \"rot\": 0}}]}}. "
-        "ID: 1-блок, 8-шип, 9-мал.шип, 35-желт.батут, 36-желт.сфера, 12-куб, 13-корабль.", camX, camY
-    );
+    std::string sysPrompt = buildAISystemPrompt(camX, camY);
 
     std::string cfIdRaw = readConfigValue("CF_ID");
     if (cfIdRaw.empty()) cfIdRaw = Mod::get()->getSettingValue<std::string>("cf-account-id");
@@ -192,7 +189,10 @@ void AIChatWindow::executeAIActions(const std::string& rawText) {
     if (root["objects"].isArray()) {
         for (auto& item : root["objects"].asArray().unwrap()) {
             if (!g_aiControlling) break;
-            if (auto gameObj = editor->createObject(item["id"].asInt().unwrapOr(1), {static_cast<float>(item["x"].asDouble().unwrapOr(0.0)), static_cast<float>(item["y"].asDouble().unwrapOr(0.0))}, false)) {
+            float objX = static_cast<float>(item["x"].asDouble().unwrapOr(300.0));
+            float objY = static_cast<float>(item["y"].asDouble().unwrapOr(15.0));
+            if (objY < 15.f) objY = 15.f;
+            if (auto gameObj = editor->createObject(item["id"].asInt().unwrapOr(1), {objX, objY}, false)) {
                 gameObj->setRotation(static_cast<float>(item["rot"].asDouble().unwrapOr(0.0)));
             }
         }
