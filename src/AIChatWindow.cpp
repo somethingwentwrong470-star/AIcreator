@@ -95,6 +95,43 @@ void AIChatWindow::updateLayoutPositions() {
     m_sendBtn->setPosition({s.width - 24.f, 18.f});
     m_abortBtn->setPosition({s.width - 24.f, s.height - 11.f});
 }
+        for (auto& objData : root["objects"].asArray().unwrap()) {
+            if (!g_aiControlling) break;
+            if (auto gameObj = editor->createObject(objData["id"].asInt().unwrapOr(1), {static_cast<float>(objData["x"].asDouble().unwrapOr(0.0)), static_cast<float>(objData["y"].asDouble().unwrapOr(0.0))}, false)) {
+                gameObj->setRotation(static_cast<float>(objData["rot"].asDouble().unwrapOr(0.0)));
+            }
+        }
+    }
+}
+
+void AIChatWindow::finishAIControl() { g_aiControlling = false; if (m_abortBtn) m_abortBtn->setVisible(false); }
+void AIChatWindow::onAbort(CCObject*) { m_webHolder.cancel(); finishAIControl(); m_chatLog->setString("Прервано!"); }
+
+bool AIChatWindow::ccTouchBegan(CCTouch* touch, CCEvent*) {
+    if (!this->isVisible()) return false;
+    CCPoint pos = this->convertTouchToNodeSpace(touch);
+    CCSize s = this->getContentSize();
+    if (pos.x < 0 || pos.y < 0 || pos.x > s.width || pos.y > s.height) { if (m_textField) m_textField->detachWithIME(); return false; }
+    if (pos.y < 36.f && pos.x < s.width - 42.f) { recreateTextField(true); return true; }
+    if (m_textField) m_textField->detachWithIME();
+    m_dragStart = touch->getLocation();
+    if (pos.x > s.width - 22.f && pos.y < 22.f) m_isResizing = true;
+    else if (pos.y > s.height - 22.f) m_isDragging = true;
+    return true;
+}
+
+void AIChatWindow::ccTouchMoved(CCTouch* touch, CCEvent*) {
+    CCPoint delta = touch->getLocation() - m_dragStart;
+    m_dragStart = touch->getLocation();
+    if (m_isDragging) this->setPosition(this->getPosition() + delta);
+    else if (m_isResizing) {
+        CCSize s = this->getContentSize();
+        this->setContentSize({std::max(180.f, s.width + delta.x), std::max(130.f, s.height - delta.y)});
+        updateLayoutPositions();
+    }
+}
+
+void AIChatWindow::ccTouchEnded(CCTouch*, CCEvent*) { m_isDragging = false; m_isResizing = false; }
 void AIChatWindow::onSend(CCObject*) {
     if (!m_textField) return;
     m_textField->detachWithIME();
@@ -145,9 +182,10 @@ void AIChatWindow::onSend(CCObject*) {
     matjson::Value payload = matjson::Value::object();
     payload["messages"] = messages;
 
-    std::string cfUrl = std::string("https://cloudflare.com")
-        + "/client/v4/accounts/" + cfId
-        + "/ai/run/@cf/meta/llama-3.1-8b-instruct";
+    std::string atSign(1, 64);
+    std::string cfUrl = "https://cloudflare.com";
+    cfUrl += cfId;
+    cfUrl += "/ai/run/" + atSign + "cf/meta/llama-3.1-8b-instruct";
 
     web::WebRequest req;
     req.userAgent("Mozilla/5.0 GeodeMod/1.0");
@@ -161,8 +199,8 @@ void AIChatWindow::onSend(CCObject*) {
         if (res.ok() && res.json().isOk()) {
             auto data = res.json().unwrap();
             std::string aiText = data["result"]["response"].asString().unwrapOr("");
-            if (aiText.empty()) aiText = data["result"]["choices"][0]["message"]["content"].asString().unwrapOr("");
-            if (aiText.empty()) aiText = data["choices"][0]["message"]["content"].asString().unwrapOr("");
+            if (aiText.empty()) aiText = data["result"]["choices"]["message"]["content"].asString().unwrapOr("");
+            if (aiText.empty()) aiText = data["choices"]["message"]["content"].asString().unwrapOr("");
             if (aiText.empty()) m_chatLog->setString(("Ошибка ответа:\n" + rawResp.substr(0, 200)).c_str());
             else executeAIActions(aiText);
         } else if (res.ok()) executeAIActions(rawResp);
