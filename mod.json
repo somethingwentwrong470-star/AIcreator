@@ -10,18 +10,14 @@
 	"developer": "somethingwentwrong470-star",
 	"description": "AI assistant for Geometry Dash Level Editor powered by Cloudflare Workers AI.",
 	"resources": {
-		"sprites": [
-			"resources/brain.png"
-		],
-		"fonts": [
-			"resources/ru_font.ttf"
-		]
+		"sprites": ["resources/brain.png"],
+		"fonts": ["resources/ru_font.ttf"]
 	},
 	"settings": {
 		"cf-account-id": {
 			"type": "string",
 			"name": "Cloudflare Account ID",
-			"description": "Your 32-character Cloudflare Account ID from ://cloudflare.com (Workers AI).",
+			"description": "Your 32-character Cloudflare Account ID from ://cloudflare.com.",
 			"default": ""
 		},
 		"api-key": {
