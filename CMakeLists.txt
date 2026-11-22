@@ -4,7 +4,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(AIEditorAssistant VERSION 1.0.0)
 
-add_library(${PROJECT_NAME} SHARED src/main.cpp)
+add_library(${PROJECT_NAME} SHARED
+    src/main.cpp
+    src/AIChatWindow.cpp
+)
 
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "Unable to find Geode SDK!")
