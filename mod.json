@@ -9,14 +9,18 @@
 	"version": "v1.1.0",
 	"developer": "somethingwentwrong470-star",
 	"description": "AI assistant for Geometry Dash Level Editor powered by Cloudflare Workers AI.",
-	"resources": {
+		"resources": {
 		"sprites": [
 			"resources/brain.png"
 		],
-		"fonts": [
-			"resources/ru_font.ttf"
-		]
+		"fonts": {
+			"ru_font.ttf": {
+				"path": "resources/ru_font.ttf",
+				"size": 14
+			}
+		}
 	},
+	
 	"settings": {
 		"cf-account-id": {
 			"type": "string",
