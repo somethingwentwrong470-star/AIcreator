@@ -130,7 +130,7 @@ void AIChatWindow::onSend(CCObject*) {
     }
 
     recreateTextField(false);
-     matjson::Value sysMsg = matjson::Value::object();
+    matjson::Value sysMsg = matjson::Value::object();
     sysMsg["role"] = "system"; sysMsg["content"] = sysPrompt;
     matjson::Value usrMsg = matjson::Value::object();
     usrMsg["role"] = "user"; usrMsg["content"] = userPrompt;
@@ -161,8 +161,14 @@ void AIChatWindow::onSend(CCObject*) {
         if (res.ok() && res.json().isOk()) {
             auto data = res.json().unwrap();
             std::string aiText = data["result"]["response"].asString().unwrapOr("");
-            if (aiText.empty()) aiText = data["result"]["choices"]["message"]["content"].asString().unwrapOr("");
-            if (aiText.empty()) aiText = data["choices"]["message"]["content"].asString().unwrapOr("");
+            if (aiText.empty() && data["result"]["choices"].isArray()) {
+                auto arr = data["result"]["choices"].asArray().unwrap();
+                if (!arr.empty()) aiText = arr.front()["message"]["content"].asString().unwrapOr("");
+            }
+            if (aiText.empty() && data["choices"].isArray()) {
+                auto arr = data["choices"].asArray().unwrap();
+                if (!arr.empty()) aiText = arr.front()["message"]["content"].asString().unwrapOr("");
+            }
             if (aiText.empty()) m_chatLog->setString(("Ошибка ответа:\n" + rawResp.substr(0, 200)).c_str());
             else executeAIActions(aiText);
         } else if (res.ok()) executeAIActions(rawResp);
