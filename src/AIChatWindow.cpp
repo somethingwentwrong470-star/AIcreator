@@ -130,7 +130,7 @@ void AIChatWindow::onSend(CCObject*) {
     }
 
     recreateTextField(false);
-    matjson::Value sysMsg = matjson::Value::object();
+     matjson::Value sysMsg = matjson::Value::object();
     sysMsg["role"] = "system"; sysMsg["content"] = sysPrompt;
     matjson::Value usrMsg = matjson::Value::object();
     usrMsg["role"] = "user"; usrMsg["content"] = userPrompt;
@@ -144,10 +144,10 @@ void AIChatWindow::onSend(CCObject*) {
     matjson::Value payload = matjson::Value::object();
     payload["messages"] = messages;
 
-    std::string atSign(1, 64);
-    std::string cfUrl = "https://cloudflare.com";
-    cfUrl += cfId;
-    cfUrl += "/ai/run/" + atSign + "cf/meta/llama-3.1-8b-instruct";
+    std::string cfUrl = fmt::format(
+        "{}://{}.{}/{}/{}/{}/{}/{}/{}cf/meta/llama-3.1-8b-instruct",
+        "https", "api.cloudflare", "com", "client", "v4", "accounts", cfId, "ai/run", std::string(1, 64)
+    );
 
     web::WebRequest req;
     req.userAgent("Mozilla/5.0 GeodeMod/1.0");
