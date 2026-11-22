@@ -1,7 +1,6 @@
 #include <Geode/Geode.hpp>
 #include <Geode/modify/EditorUI.hpp>
 #include <Geode/modify/LevelEditorLayer.hpp>
-#include <Geode/ui/TextInput.hpp>
 #include <Geode/utils/web.hpp>
 #include <fstream>
 #include <sstream>
@@ -53,7 +52,6 @@ std::string extractHex32(const std::string& raw) {
     if (hexOnly.size() >= 32) return hexOnly.substr(hexOnly.size() - 32);
     return hexOnly;
 }
-
 class AIChatWindow : public CCLayer {
 protected:
     CCPoint m_dragStart;
@@ -62,14 +60,14 @@ protected:
 
     CCLayerColor* m_bg = nullptr;
     CCLayerColor* m_headerBg = nullptr;
+    CCLayerColor* m_inputBg = nullptr;
     CCLabelTTF* m_title = nullptr;
-    CCLabelTTF* m_badgeLabel = nullptr;
     CCLabelTTF* m_chatLog = nullptr;
-    TextInput* m_textInput = nullptr;
+    CCTextFieldTTF* m_textField = nullptr;
     CCMenu* m_menu = nullptr;
     CCMenuItemSpriteExtra* m_sendBtn = nullptr;
-    CCMenuItemSpriteExtra* m_clearBtn = nullptr;
     CCMenuItemSpriteExtra* m_abortBtn = nullptr;
+    ButtonSprite* m_providerSpr = nullptr;
     async::TaskHolder<web::WebResponse> m_webHolder;
 
 public:
@@ -80,72 +78,56 @@ public:
 
     static AIChatWindow* create() {
         auto ret = new AIChatWindow();
-        if (ret && ret->init()) {
-            ret->autorelease();
-            return ret;
-        }
+        if (ret && ret->init()) { ret->autorelease(); return ret; }
         CC_SAFE_DELETE(ret);
         return nullptr;
     }
+
     bool init() override {
         if (!CCLayer::init()) return false;
         ensureConfigTemplate();
         g_aiControlling = false;
-
-        this->setContentSize({250.f, 170.f});
+        this->setContentSize({230.f, 165.f});
         this->setTouchEnabled(true);
         this->setTouchMode(kCCTouchesOneByOne);
         this->setTouchPriority(-500);
 
-        m_bg = CCLayerColor::create({18, 20, 32, 240}, 250.f, 170.f);
+        m_bg = CCLayerColor::create({18, 20, 32, 235}, 230.f, 165.f);
         this->addChild(m_bg, 0);
-
-        m_headerBg = CCLayerColor::create({32, 36, 56, 255}, 250.f, 22.f);
+        m_headerBg = CCLayerColor::create({32, 36, 56, 255}, 230.f, 22.f);
         this->addChild(m_headerBg, 1);
-
+        m_inputBg = CCLayerColor::create({35, 38, 52, 255}, 168.f, 24.f);
+        this->addChild(m_inputBg, 2);
         m_title = CCLabelTTF::create("ИИ Чат", "ru_font.ttf"_spr, 11);
-        m_title->setAnchorPoint({0.f, 0.5f});
         this->addChild(m_title, 5);
-
-        m_badgeLabel = CCLabelTTF::create("Cloudflare AI", "ru_font.ttf"_spr, 9);
-        m_badgeLabel->setColor({110, 210, 255});
-        this->addChild(m_badgeLabel, 5);
-
-        m_chatLog = CCLabelTTF::create(
-            "Cloudflare готов! Напиши запрос (например: «построй 3 прыжка через шипы»):",
-            "ru_font.ttf"_spr, 10, {234.f, 100.f}, kCCTextAlignmentLeft
-        );
+        m_chatLog = CCLabelTTF::create("Cloudflare готов! Пиши запрос по-русски:", "ru_font.ttf"_spr, 10, {214.f, 95.f}, kCCTextAlignmentLeft);
         this->addChild(m_chatLog, 5);
 
-        m_textInput = TextInput::create(165.f, "Введи запрос...", "ru_font.ttf"_spr);
-        m_textInput->setCommonFilter(CommonFilter::Any);
-        m_textInput->setMaxCharCount(300);
-        this->addChild(m_textInput, 10);
+        m_textField = CCTextFieldTTF::textFieldWithPlaceHolder("Нажми сюда и пиши...", {160.f, 20.f}, kCCTextAlignmentLeft, "ru_font.ttf"_spr, 11.f);
+        m_textField->setColorSpaceHolder({150, 150, 170});
+        m_textField->setColor({255, 255, 255});
+        this->addChild(m_textField, 10);
 
         m_menu = CCMenu::create();
         m_menu->setPosition({0.f, 0.f});
         m_menu->setTouchPriority(-505);
         this->addChild(m_menu, 15);
 
-        auto clearSpr = ButtonSprite::create("X", "goldFont.fnt", "GJ_button_06.png", 0.42f);
-        m_clearBtn = CCMenuItemSpriteExtra::create(clearSpr, this, menu_selector(AIChatWindow::onClearInput));
-        m_menu->addChild(m_clearBtn);
-
-        auto sendSpr = ButtonSprite::create(">>", "goldFont.fnt", "GJ_button_01.png", 0.48f);
+        auto sendSpr = ButtonSprite::create(">>", "goldFont.fnt", "GJ_button_01.png", 0.5f);
         m_sendBtn = CCMenuItemSpriteExtra::create(sendSpr, this, menu_selector(AIChatWindow::onSend));
         m_menu->addChild(m_sendBtn);
 
-        auto abortSpr = ButtonSprite::create("STOP", "goldFont.fnt", "GJ_button_06.png", 0.4f);
+        auto abortSpr = ButtonSprite::create("STOP", "goldFont.fnt", "GJ_button_06.png", 0.42f);
         m_abortBtn = CCMenuItemSpriteExtra::create(abortSpr, this, menu_selector(AIChatWindow::onAbort));
         m_abortBtn->setVisible(false);
         m_menu->addChild(m_abortBtn);
 
+        m_providerSpr = ButtonSprite::create("Cloudflare", "goldFont.fnt", "GJ_button_04.png", 0.4f);
+        m_providerSpr->setPosition({127.f, 154.f});
+        this->addChild(m_providerSpr, 12);
+
         updateLayoutPositions();
         return true;
-    }
-
-    void onClearInput(CCObject*) {
-        if (m_textInput) m_textInput->setString("");
     }
 
     void updateLayoutPositions() {
@@ -153,39 +135,35 @@ public:
         m_bg->setContentSize(s);
         m_headerBg->setContentSize({s.width, 22.f});
         m_headerBg->setPosition({0.f, s.height - 22.f});
-        m_title->setPosition({10.f, s.height - 11.f});
-        m_badgeLabel->setPosition({s.width / 2.f + 10.f, s.height - 11.f});
-        m_chatLog->setDimensions({s.width - 16.f, s.height - 64.f});
-        m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 5.f});
-
-        float inputWidth = std::max(90.f, s.width - 78.f);
-        m_textInput->setContentWidth(inputWidth);
-        m_textInput->setPosition({8.f + inputWidth / 2.f, 18.f});
-        m_clearBtn->setPosition({s.width - 52.f, 18.f});
-        m_sendBtn->setPosition({s.width - 22.f, 18.f});
-        m_abortBtn->setPosition({s.width - 26.f, s.height - 11.f});
+        m_title->setPosition({32.f, s.height - 11.f});
+        m_providerSpr->setPosition({s.width / 2.f + 12.f, s.height - 11.f});
+        m_chatLog->setDimensions({s.width - 16.f, s.height - 62.f});
+        m_chatLog->setPosition({s.width / 2.f, s.height / 2.f + 4.f});
+        float inputWidth = s.width - 58.f;
+        m_inputBg->setContentSize({inputWidth, 24.f});
+        m_inputBg->setPosition({8.f, 6.f});
+        m_textField->setDimensions({inputWidth - 8.f, 18.f});
+        m_textField->setPosition({inputWidth / 2.f + 10.f, 17.f});
+        m_sendBtn->setPosition({s.width - 24.f, 18.f});
+        m_abortBtn->setPosition({s.width - 24.f, s.height - 11.f});
     }
     void onSend(CCObject*) {
-        if (!m_textInput) return;
-        m_textInput->defocus();
-        std::string userPrompt = trimStr(m_textInput->getString());
+        m_textField->detachWithIME();
+        std::string userPrompt = m_textField->getString() ? m_textField->getString() : "";
         if (userPrompt.empty() || g_aiControlling) return;
 
         float camX = 300.f, camY = 105.f;
         if (auto editor = LevelEditorLayer::get()) {
             if (editor->m_objectLayer) {
-                camX = std::round((-editor->m_objectLayer->getPositionX() + 200.f) / 30.f) * 30.f;
-                camY = std::round((-editor->m_objectLayer->getPositionY() + 105.f) / 30.f) * 30.f;
+                camX = -editor->m_objectLayer->getPositionX() + 200.f;
+                camY = -editor->m_objectLayer->getPositionY() + 100.f;
             }
         }
 
         std::string sysPrompt = fmt::format(
-            "Ты ИИ-строитель уровней в Geometry Dash 2.2081. Центр экрана: baseX={:.0f}, baseY={:.0f} (1 клетка = 30, пол на Y=15). "
-            "Отвечай ТОЛЬКО валидным JSON без markdown: "
-            "{{\"reply\": \"краткий ответ\", \"objects\": [{{\"id\": 1, \"dx\": 0, \"dy\": 0, \"rot\": 0}}]}}. "
-            "dx и dy — смещение в единицах (кратно 30) относительно baseX и baseY. "
-            "ID: 1-блок, 8-шип, 9-мал.шип, 35-желт.батут, 36-желт.сфера, 12-куб, 13-корабль, 47-шар, 660-волна. "
-            "Делай расстояния между препятствиями 90-150 по dx.", camX, camY
+            "Ты ИИ-строитель уровней в Geometry Dash 2.208. Камера X={:.0f}, Y={:.0f} (1 блок=30). "
+            "Отвечай ТОЛЬКО валидным JSON без markdown: {{\"reply\": \"ответ\", \"objects\": [{{\"id\": 1, \"x\": 300, \"y\": 105, \"rot\": 0}}]}}. "
+            "ID: 1-блок, 8-шип, 9-мал.шип, 35-желт.батут, 36-желт.сфера, 12-куб, 13-корабль.", camX, camY
         );
 
         std::string cfIdRaw = readConfigValue("CF_ID");
@@ -197,12 +175,12 @@ public:
 
         if (cfId.size() != 32 || apiKey.empty()) {
             auto cfgPath = Mod::get()->getConfigDir() / "ai_config.txt";
-            m_chatLog->setString(fmt::format("Нет ключей Cloudflare!\nФайл: {}\nCF_ID: {}/32 | CF_KEY: {}",
-                cfgPath.string(), cfId.size(), apiKey.empty() ? "НЕТ" : "ОК").c_str());
+            m_chatLog->setString(fmt::format("ПРОВЕРКА КОНФИГА\nФайл: {}\nCF_ID: {}/32\nCF_KEY: {}",
+                cfgPath.string(), cfId.size(), apiKey.empty() ? "ПУСТОЙ" : "НАЙДЕН").c_str());
             return;
         }
 
-        m_textInput->setString("");
+        m_textField->setString("");
         matjson::Value sysMsg = matjson::Value::object();
         sysMsg["role"] = "system"; sysMsg["content"] = sysPrompt;
         matjson::Value usrMsg = matjson::Value::object();
@@ -212,7 +190,7 @@ public:
 
         g_aiControlling = true;
         m_abortBtn->setVisible(true);
-        m_chatLog->setString(("Вы: " + userPrompt + "\n[Cloudflare строит...]").c_str());
+        m_chatLog->setString(("Вы: " + userPrompt + "\n[Cloudflare думает...]").c_str());
 
         matjson::Value payload = matjson::Value::object();
         payload["messages"] = messages;
@@ -224,7 +202,7 @@ public:
         req.header("Authorization", "Bearer " + apiKey);
         req.bodyString(payload.dump());
 
-        m_webHolder.spawn(req.post(cfUrl), [this, camX, camY](web::WebResponse res) {
+        m_webHolder.spawn(req.post(cfUrl), [this](web::WebResponse res) {
             if (!g_aiControlling) return;
             std::string rawResp = res.string().unwrapOr("");
             if (res.ok() && res.json().isOk()) {
@@ -232,64 +210,49 @@ public:
                 std::string aiText = data["result"]["response"].asString().unwrapOr("");
                 if (aiText.empty()) aiText = data["result"]["choices"][0]["message"]["content"].asString().unwrapOr("");
                 if (aiText.empty()) aiText = data["choices"][0]["message"]["content"].asString().unwrapOr("");
-                if (aiText.empty()) m_chatLog->setString(("Ошибка разбора:\n" + rawResp.substr(0, 200)).c_str());
-                else executeAIActions(aiText, camX, camY);
-            } else if (res.ok()) {
-                executeAIActions(rawResp, camX, camY);
-            } else {
-                m_chatLog->setString(fmt::format("CF Ошибка {}: {}\n{}", res.code(), res.errorMessage(), rawResp.substr(0, 110)).c_str());
-            }
+                if (aiText.empty()) m_chatLog->setString(("Ошибка ответа:\n" + rawResp.substr(0, 200)).c_str());
+                else executeAIActions(aiText);
+            } else if (res.ok()) executeAIActions(rawResp);
+            else m_chatLog->setString(fmt::format("CF Код {}: {}\n{}", res.code(), res.errorMessage(), rawResp.substr(0, 110)).c_str());
             finishAIControl();
         });
     }
-    void executeAIActions(const std::string& rawText, float baseX, float baseY) {
+    void executeAIActions(std::string rawText) {
         auto start = rawText.find('{');
         auto end = rawText.rfind('}');
-        if (start == std::string::npos || end == std::string::npos || end <= start) {
-            m_chatLog->setString(("ИИ: " + rawText.substr(0, 180)).c_str());
-            return;
-        }
+        if (start == std::string::npos || end == std::string::npos) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 120)).c_str()); return; }
         auto parsed = matjson::parse(rawText.substr(start, end - start + 1));
-        if (!parsed.isOk()) {
-            m_chatLog->setString(("ИИ: " + rawText.substr(0, 180)).c_str());
-            return;
-        }
-        auto root = parsed.unwrap();
-        std::string replyText = root["reply"].asString().unwrapOr("Готово!");
-        auto editor = LevelEditorLayer::get();
-        int spawnedCount = 0;
+        if (!parsed.isOk()) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 120)).c_str()); return; }
 
-        if (editor && root["objects"].isArray()) {
+        auto root = parsed.unwrap();
+        m_chatLog->setString(("ИИ: " + root["reply"].asString().unwrapOr("Готово!")).c_str());
+        auto editor = LevelEditorLayer::get();
+        if (!editor) return;
+
+        if (root["objects"].isArray()) {
             for (auto& objData : root["objects"].asArray().unwrap()) {
                 if (!g_aiControlling) break;
-                int objId = objData["id"].asInt().unwrapOr(1);
-                float posX = baseX + static_cast<float>(objData["dx"].asDouble().unwrapOr(0.0));
-                float posY = baseY + static_cast<float>(objData["dy"].asDouble().unwrapOr(0.0));
-                if (objData.contains("x") && !objData.contains("dx")) posX = static_cast<float>(objData["x"].asDouble().unwrapOr(baseX));
-                if (objData.contains("y") && !objData.contains("dy")) posY = static_cast<float>(objData["y"].asDouble().unwrapOr(baseY));
-                if (posY < 15.f) posY = 15.f;
-
-                if (auto gameObj = editor->createObject(objId, {posX, posY}, false)) {
+                if (auto gameObj = editor->createObject(objData["id"].asInt().unwrapOr(1), {static_cast<float>(objData["x"].asDouble().unwrapOr(0.0)), static_cast<float>(objData["y"].asDouble().unwrapOr(0.0))}, false)) {
                     gameObj->setRotation(static_cast<float>(objData["rot"].asDouble().unwrapOr(0.0)));
-                    spawnedCount++;
                 }
             }
         }
-        m_chatLog->setString(spawnedCount > 0
-            ? fmt::format("ИИ: {} (объектов: {})", replyText, spawnedCount).c_str()
-            : ("ИИ: " + replyText).c_str());
     }
 
-    void finishAIControl() { g_aiControlling = false; if (m_abortBtn) m_abortBtn->setVisible(false); }
-    void onAbort(CCObject*) { m_webHolder.cancel(); finishAIControl(); m_chatLog->setString("Запрос прерван."); }
+    void finishAIControl() { g_aiControlling = false; m_abortBtn->setVisible(false); }
+    void onAbort(CCObject*) { m_webHolder.cancel(); finishAIControl(); m_chatLog->setString("Прервано!"); }
 
     bool ccTouchBegan(CCTouch* touch, CCEvent*) override {
         if (!this->isVisible()) return false;
         CCPoint pos = this->convertTouchToNodeSpace(touch);
         CCSize s = this->getContentSize();
-        if (pos.x < 0 || pos.y < 0 || pos.x > s.width || pos.y > s.height) { if (m_textInput) m_textInput->defocus(); return false; }
-        if (pos.y < 36.f && pos.x < s.width - 18.f) return false;
-        if (m_textInput) m_textInput->defocus();
+        if (pos.x < 0 || pos.y < 0 || pos.x > s.width || pos.y > s.height) { m_textField->detachWithIME(); return false; }
+        if (pos.y < 36.f && pos.x < s.width - 42.f) {
+            m_textField->setString("");
+            m_textField->attachWithIME();
+            return true;
+        }
+        m_textField->detachWithIME();
         m_dragStart = touch->getLocation();
         if (pos.x > s.width - 22.f && pos.y < 22.f) m_isResizing = true;
         else if (pos.y > s.height - 22.f) m_isDragging = true;
@@ -302,7 +265,7 @@ public:
         if (m_isDragging) this->setPosition(this->getPosition() + delta);
         else if (m_isResizing) {
             CCSize s = this->getContentSize();
-            this->setContentSize({std::max(210.f, s.width + delta.x), std::max(135.f, s.height - delta.y)});
+            this->setContentSize({std::max(180.f, s.width + delta.x), std::max(130.f, s.height - delta.y)});
             updateLayoutPositions();
         }
     }
