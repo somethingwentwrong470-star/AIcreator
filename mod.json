@@ -1,17 +1,19 @@
 {
 	"geode": "5.11.2",
 	"gd": {
-		"android": "2.2081",
-		"win": "2.2081"
+		"win": "2.2081",
+		"android": "2.2081"
 	},
-	"version": "v1.0.0",
 	"id": "custom.ai_editor_assistant",
-	"name": "AI Editor Assistant",
-	"developer": "CustomCreator",
-	"description": "AI Editor Assistant",
+	"name": "AIcreator",
+	"version": "v1.1.0",
+	"developer": "somethingwentwrong470-star",
+	"description": "AI assistant for Geometry Dash Level Editor powered by Cloudflare Workers AI.",
 	"resources": {
-		"files": [
-			"resources/brain.png",
+		"sprites": [
+			"resources/brain.png"
+		],
+		"fonts": [
 			"resources/ru_font.ttf"
 		]
 	},
@@ -19,11 +21,13 @@
 		"cf-account-id": {
 			"type": "string",
 			"name": "Cloudflare Account ID",
+			"description": "Your 32-character Cloudflare Account ID from ://cloudflare.com (Workers AI).",
 			"default": ""
 		},
 		"api-key": {
 			"type": "string",
-			"name": "API Key",
+			"name": "Cloudflare API Token",
+			"description": "Your Workers AI API Token from Cloudflare Dashboard.",
 			"default": ""
 		}
 	}
