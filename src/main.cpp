@@ -225,8 +225,19 @@ public:
         }
 
         if (cfId.size() != 32 || apiKey.empty()) {
-            m_chatLog->setString("Укажи 32-значный CF_ID и CF_KEY в ai_config.txt!");
-            return;
+    auto cfgPath = Mod::get()->getConfigDir() / "ai_config.txt";
+
+    m_chatLog->setString(fmt::format(
+        "ПРОВЕРКА КОНФИГА\n"
+        "Файл: {}\n"
+        "CF_ID: {} hex-символов\n"
+        "CF_KEY: {}",
+        cfgPath.string(),
+        cfId.size(),
+        apiKey.empty() ? "ПУСТОЙ" : "НАЙДЕН"
+    ).c_str());
+
+    return;
         }
 
         g_aiControlling = true;
