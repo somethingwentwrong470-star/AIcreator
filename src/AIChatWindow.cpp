@@ -131,7 +131,6 @@ void AIChatWindow::onSend(CCObject*) {
 
     recreateTextField(false);
     matjson::Value sysMsg = matjson::Value::object();
-                        matjson::Value sysMsg = matjson::Value::object();
     sysMsg["role"] = "system"; sysMsg["content"] = sysPrompt;
     matjson::Value usrMsg = matjson::Value::object();
     usrMsg["role"] = "user"; usrMsg["content"] = userPrompt;
