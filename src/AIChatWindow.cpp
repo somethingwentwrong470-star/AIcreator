@@ -1,7 +1,10 @@
 #include "AIChatWindow.hpp"
 #include "Config.hpp"
 #include "Prompt.hpp"
+#include "Templates.hpp"
 #include <Geode/modify/LevelEditorLayer.hpp>
+#include <set>
+#include <utility>
 
 AIChatWindow::~AIChatWindow() {
     m_webHolder.cancel();
@@ -177,6 +180,7 @@ void AIChatWindow::onSend(CCObject*) {
 
 void AIChatWindow::executeAIActions(const std::string& rawText) {
     size_t objKeyPos = rawText.find("\"objects\"");
+    if (objKeyPos == std::string::npos) objKeyPos = rawText.find("\"templates\"");
     size_t start = (objKeyPos != std::string::npos) ? rawText.rfind('{', objKeyPos) : rawText.find('{');
     size_t end = rawText.rfind('}');
     if (start == std::string::npos) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 180)).c_str()); return; }
@@ -197,19 +201,48 @@ void AIChatWindow::executeAIActions(const std::string& rawText) {
     auto root = parsed.unwrap();
     auto editor = LevelEditorLayer::get();
     int spawned = 0;
+    std::set<std::pair<int, int>> occupiedCells;
+
+    auto trySpawn = [&](int id, float x, float y, float rot, bool fx, bool fy) {
+        if (y < 120.f) y = 120.f;
+        int cellX = static_cast<int>(std::round(x / 15.f));
+        int cellY = static_cast<int>(std::round(y / 15.f));
+        if (occupiedCells.count({cellX, cellY})) return;
+        occupiedCells.insert({cellX, cellY});
+        if (auto gameObj = editor->createObject(id, {x, y}, false)) {
+            gameObj->setRotation(rot);
+            gameObj->setFlipX(fx);
+            gameObj->setFlipY(fy);
+            spawned++;
+        }
+    };
+
+    if (editor && root["templates"].isArray()) {
+        for (auto& tpl : root["templates"].asArray().unwrap()) {
+            if (!g_aiControlling) break;
+            std::string name = tpl["name"].asString().unwrapOr("");
+            int customId = tpl["id"].asInt().unwrapOr(0);
+            float baseX = static_cast<float>(tpl["x"].asDouble().unwrapOr(300.0));
+            float baseY = static_cast<float>(tpl["y"].asDouble().unwrapOr(120.0));
+            if (baseY < 120.f) baseY = 120.f;
+            for (auto& part : getTemplateParts(name)) {
+                int finalId = (customId > 0 && name != "wave_up" && name != "wave_down") ? customId : part.defaultId;
+                trySpawn(finalId, baseX + part.dx * 30.f, baseY + part.dy * 30.f, 0.f, part.flipX, part.flipY);
+            }
+        }
+    }
 
     if (editor && root["objects"].isArray()) {
         for (auto& item : root["objects"].asArray().unwrap()) {
             if (!g_aiControlling) break;
+            int id = item["id"].asInt().unwrapOr(1);
             float objX = static_cast<float>(item["x"].asDouble().unwrapOr(300.0));
             float objY = static_cast<float>(item["y"].asDouble().unwrapOr(120.0));
-            if (objY < 120.f) objY = 120.f;
-            if (auto gameObj = editor->createObject(item["id"].asInt().unwrapOr(1), {objX, objY}, false)) {
-                gameObj->setRotation(static_cast<float>(item["rot"].asDouble().unwrapOr(0.0)));
-                spawned++;
-            }
+            float rot = static_cast<float>(item["rot"].asDouble().unwrapOr(0.0));
+            trySpawn(id, objX, objY, rot, false, false);
         }
     }
+
     std::string reply = root["reply"].asString().unwrapOr("Готово!");
     m_chatLog->setString(spawned > 0 ? fmt::format("ИИ: {} (+{})", reply, spawned).c_str() : ("ИИ: " + reply).c_str());
 }
