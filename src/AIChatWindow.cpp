@@ -140,6 +140,7 @@ void AIChatWindow::onSend(CCObject*) {
 
     matjson::Value payload = matjson::Value::object();
     payload["messages"] = messages;
+    payload["max_tokens"] = 1024;
 
     std::string cfUrl = fmt::format(
         "{}://{}.{}/{}/{}/{}/{}/{}/{}cf/meta/llama-3.1-8b-instruct",
@@ -175,28 +176,42 @@ void AIChatWindow::onSend(CCObject*) {
 }
 
 void AIChatWindow::executeAIActions(const std::string& rawText) {
-    auto start = rawText.find('{');
-    auto end = rawText.rfind('}');
-    if (start == std::string::npos || end == std::string::npos) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 120)).c_str()); return; }
-    auto parsed = matjson::parse(rawText.substr(start, end - start + 1));
-    if (!parsed.isOk()) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 120)).c_str()); return; }
+    size_t objKeyPos = rawText.find("\"objects\"");
+    size_t start = (objKeyPos != std::string::npos) ? rawText.rfind('{', objKeyPos) : rawText.find('{');
+    size_t end = rawText.rfind('}');
+    if (start == std::string::npos) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 180)).c_str()); return; }
+
+    std::string jsonCandidate = (end != std::string::npos && end > start)
+        ? rawText.substr(start, end - start + 1)
+        : rawText.substr(start);
+
+    auto parsed = matjson::parse(jsonCandidate);
+    if (!parsed.isOk() && objKeyPos != std::string::npos) {
+        size_t lastObjEnd = jsonCandidate.rfind('}');
+        if (lastObjEnd != std::string::npos) {
+            parsed = matjson::parse(jsonCandidate.substr(0, lastObjEnd + 1) + "]}");
+        }
+    }
+    if (!parsed.isOk()) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 180)).c_str()); return; }
 
     auto root = parsed.unwrap();
-    m_chatLog->setString(("ИИ: " + root["reply"].asString().unwrapOr("Готово!")).c_str());
     auto editor = LevelEditorLayer::get();
-    if (!editor) return;
+    int spawned = 0;
 
-    if (root["objects"].isArray()) {
+    if (editor && root["objects"].isArray()) {
         for (auto& item : root["objects"].asArray().unwrap()) {
             if (!g_aiControlling) break;
             float objX = static_cast<float>(item["x"].asDouble().unwrapOr(300.0));
-            float objY = static_cast<float>(item["y"].asDouble().unwrapOr(15.0));
-            if (objY < 15.f) objY = 15.f;
+            float objY = static_cast<float>(item["y"].asDouble().unwrapOr(120.0));
+            if (objY < 120.f) objY = 120.f;
             if (auto gameObj = editor->createObject(item["id"].asInt().unwrapOr(1), {objX, objY}, false)) {
                 gameObj->setRotation(static_cast<float>(item["rot"].asDouble().unwrapOr(0.0)));
+                spawned++;
             }
         }
     }
+    std::string reply = root["reply"].asString().unwrapOr("Готово!");
+    m_chatLog->setString(spawned > 0 ? fmt::format("ИИ: {} (+{})", reply, spawned).c_str() : ("ИИ: " + reply).c_str());
 }
 
 void AIChatWindow::finishAIControl() { g_aiControlling = false; if (m_abortBtn) m_abortBtn->setVisible(false); }
