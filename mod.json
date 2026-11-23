@@ -9,7 +9,7 @@
 	"version": "v1.1.0",
 	"developer": "somethingwentwrong470-star",
 	"description": "AI assistant for Geometry Dash Level Editor powered by Cloudflare Workers AI.",
-		"resources": {
+	"resources": {
 		"sprites": [
 			"resources/brain.png"
 		],
@@ -20,12 +20,11 @@
 			}
 		}
 	},
-	
 	"settings": {
 		"cf-account-id": {
 			"type": "string",
 			"name": "Cloudflare Account ID",
-			"description": "Your 32-character Cloudflare Account ID from ://cloudflare.com.",
+			"description": "Your 32-character Cloudflare Account ID from Cloudflare Dashboard.",
 			"default": ""
 		},
 		"api-key": {
@@ -33,6 +32,12 @@
 			"name": "Cloudflare API Token",
 			"description": "Your Workers AI API Token from Cloudflare Dashboard.",
 			"default": ""
+		},
+		"cf-model": {
+			"type": "string",
+			"name": "Cloudflare AI Model",
+			"description": "Model ID (e.g. @cf/meta/llama-3.1-8b-instruct or @cf/meta/llama-3.3-70b-instruct-fp8-fast).",
+			"default": "@cf/meta/llama-3.1-8b-instruct"
 		}
 	}
 }
