@@ -131,6 +131,7 @@ void AIChatWindow::onSend(CCObject*) {
 
     recreateTextField(false);
     matjson::Value sysMsg = matjson::Value::object();
+                        matjson::Value sysMsg = matjson::Value::object();
     sysMsg["role"] = "system"; sysMsg["content"] = sysPrompt;
     matjson::Value usrMsg = matjson::Value::object();
     usrMsg["role"] = "user"; usrMsg["content"] = userPrompt;
@@ -143,11 +144,16 @@ void AIChatWindow::onSend(CCObject*) {
 
     matjson::Value payload = matjson::Value::object();
     payload["messages"] = messages;
-    payload["max_tokens"] = 1024;
+    payload["max_tokens"] = 1500;
+    payload["max_completion_tokens"] = 1500;
+
+    std::string modelName = trimStr(Mod::get()->getSettingValue<std::string>("cf-model"));
+    if (modelName.empty()) modelName = std::string(1, 64) + "cf/meta/llama-3.1-8b-instruct";
+    if (modelName.front() != '@') modelName = std::string(1, 64) + modelName;
 
     std::string cfUrl = fmt::format(
-        "{}://{}.{}/{}/{}/{}/{}/{}/{}cf/meta/llama-3.1-8b-instruct",
-        "https", "api.cloudflare", "com", "client", "v4", "accounts", cfId, "ai/run", std::string(1, 64)
+        "{}://{}.{}/{}/{}/{}/{}/{}/{}",
+        "https", "api.cloudflare", "com", "client", "v4", "accounts", cfId, "ai/run", modelName
     );
 
     web::WebRequest req;
@@ -179,21 +185,22 @@ void AIChatWindow::onSend(CCObject*) {
 }
 
 void AIChatWindow::executeAIActions(const std::string& rawText) {
-    size_t objKeyPos = rawText.find("\"objects\"");
-    if (objKeyPos == std::string::npos) objKeyPos = rawText.find("\"templates\"");
-    size_t start = (objKeyPos != std::string::npos) ? rawText.rfind('{', objKeyPos) : rawText.find('{');
-    size_t end = rawText.rfind('}');
+    size_t start = rawText.find('{');
     if (start == std::string::npos) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 180)).c_str()); return; }
 
-    std::string jsonCandidate = (end != std::string::npos && end > start)
-        ? rawText.substr(start, end - start + 1)
-        : rawText.substr(start);
+    std::string jsonCandidate = rawText.substr(start);
+    size_t end = jsonCandidate.rfind('}');
+    if (end != std::string::npos) jsonCandidate = jsonCandidate.substr(0, end + 1);
 
     auto parsed = matjson::parse(jsonCandidate);
-    if (!parsed.isOk() && objKeyPos != std::string::npos) {
-        size_t lastObjEnd = jsonCandidate.rfind('}');
-        if (lastObjEnd != std::string::npos) {
-            parsed = matjson::parse(jsonCandidate.substr(0, lastObjEnd + 1) + "]}");
+    if (!parsed.isOk()) {
+        size_t lastBrace = jsonCandidate.rfind('}');
+        if (lastBrace != std::string::npos) {
+            std::string trimmed = jsonCandidate.substr(0, lastBrace + 1);
+            for (const char* suffix : {"]}", "],\"o\":[]}", "}]}", "],\"objects\":[]}"}) {
+                parsed = matjson::parse(trimmed + suffix);
+                if (parsed.isOk()) break;
+            }
         }
     }
     if (!parsed.isOk()) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 180)).c_str()); return; }
@@ -217,10 +224,11 @@ void AIChatWindow::executeAIActions(const std::string& rawText) {
         }
     };
 
-    if (editor && root["templates"].isArray()) {
-        for (auto& tpl : root["templates"].asArray().unwrap()) {
+    auto tplVal = root.contains("t") ? root["t"] : root["templates"];
+    if (editor && tplVal.isArray()) {
+        for (auto& tpl : tplVal.asArray().unwrap()) {
             if (!g_aiControlling) break;
-            std::string name = tpl["name"].asString().unwrapOr("");
+            std::string name = tpl.contains("n") ? tpl["n"].asString().unwrapOr("") : tpl["name"].asString().unwrapOr("");
             int customId = tpl["id"].asInt().unwrapOr(0);
             float baseX = static_cast<float>(tpl["x"].asDouble().unwrapOr(300.0));
             float baseY = static_cast<float>(tpl["y"].asDouble().unwrapOr(120.0));
@@ -232,8 +240,9 @@ void AIChatWindow::executeAIActions(const std::string& rawText) {
         }
     }
 
-    if (editor && root["objects"].isArray()) {
-        for (auto& item : root["objects"].asArray().unwrap()) {
+    auto objVal = root.contains("o") ? root["o"] : root["objects"];
+    if (editor && objVal.isArray()) {
+        for (auto& item : objVal.asArray().unwrap()) {
             if (!g_aiControlling) break;
             int id = item["id"].asInt().unwrapOr(1);
             float objX = static_cast<float>(item["x"].asDouble().unwrapOr(300.0));
@@ -243,7 +252,7 @@ void AIChatWindow::executeAIActions(const std::string& rawText) {
         }
     }
 
-    std::string reply = root["reply"].asString().unwrapOr("Готово!");
+    std::string reply = root.contains("r") ? root["r"].asString().unwrapOr("Готово!") : root["reply"].asString().unwrapOr("Готово!");
     m_chatLog->setString(spawned > 0 ? fmt::format("ИИ: {} (+{})", reply, spawned).c_str() : ("ИИ: " + reply).c_str());
 }
 
