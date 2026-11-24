@@ -3,6 +3,7 @@
 #include "Prompt.hpp"
 #include "Templates.hpp"
 #include <Geode/modify/LevelEditorLayer.hpp>
+#include <cmath>
 #include <set>
 #include <utility>
 
@@ -60,6 +61,7 @@ bool AIChatWindow::init() {
     updateLayoutPositions();
     return true;
 }
+
 void AIChatWindow::recreateTextField(bool openKeyboard) {
     if (m_textField) {
         m_textField->detachWithIME();
@@ -105,7 +107,7 @@ void AIChatWindow::onSend(CCObject*) {
     std::string userPrompt = m_textField->getString() ? m_textField->getString() : "";
     if (userPrompt.empty() || g_aiControlling) return;
 
-    float camX = 300.f, camY = 105.f;
+    float camX = 315.f, camY = 15.f;
     if (auto editor = LevelEditorLayer::get()) {
         if (editor->m_objectLayer) {
             camX = -editor->m_objectLayer->getPositionX() + 200.f;
@@ -182,7 +184,6 @@ void AIChatWindow::onSend(CCObject*) {
         finishAIControl();
     });
 }
-
 void AIChatWindow::executeAIActions(const std::string& rawText) {
     size_t start = rawText.find('{');
     if (start == std::string::npos) { m_chatLog->setString(("ИИ: " + rawText.substr(0, 180)).c_str()); return; }
@@ -207,14 +208,33 @@ void AIChatWindow::executeAIActions(const std::string& rawText) {
     auto root = parsed.unwrap();
     auto editor = LevelEditorLayer::get();
     int spawned = 0;
+    const int MAX_SPAWN = 120;
     std::set<std::pair<int, int>> occupiedCells;
 
+    auto snapToGrid = [](float val) -> float {
+        return std::floor(val / 30.0f) * 30.0f + 15.0f;
+    };
+
+    auto isDangerousTemplateId = [](int id) -> bool {
+        static const std::set<int> blocked = {
+            8, 9, 103, 12, 13, 47, 111, 660, 745, 1331, 1933,
+            35, 36, 67, 84, 140, 141, 1022, 1330, 1332, 1333, 1704, 1751, 3004, 3005, 31
+        };
+        return blocked.count(id) > 0;
+    };
+
     auto trySpawn = [&](int id, float x, float y, float rot, bool fx, bool fy) {
-        if (y < 120.f) y = 120.f;
-        int cellX = static_cast<int>(std::round(x / 15.f));
-        int cellY = static_cast<int>(std::round(y / 15.f));
+        if (spawned >= MAX_SPAWN || id <= 0) return;
+        x = snapToGrid(x);
+        y = snapToGrid(y);
+        if (x < 15.f) x = 15.f;
+        if (y < 15.f) y = 15.f;
+
+        int cellX = static_cast<int>(std::round((x - 15.f) / 30.f));
+        int cellY = static_cast<int>(std::round((y - 15.f) / 30.f));
         if (occupiedCells.count({cellX, cellY})) return;
         occupiedCells.insert({cellX, cellY});
+
         if (auto gameObj = editor->createObject(id, {x, y}, false)) {
             gameObj->setRotation(rot);
             gameObj->setFlipX(fx);
@@ -226,15 +246,20 @@ void AIChatWindow::executeAIActions(const std::string& rawText) {
     auto tplVal = root.contains("t") ? root["t"] : root["templates"];
     if (editor && tplVal.isArray()) {
         for (auto& tpl : tplVal.asArray().unwrap()) {
-            if (!g_aiControlling) break;
+            if (!g_aiControlling || spawned >= MAX_SPAWN) break;
             std::string name = tpl.contains("n") ? tpl["n"].asString().unwrapOr("") : tpl["name"].asString().unwrapOr("");
             int customId = tpl["id"].asInt().unwrapOr(0);
-            float baseX = static_cast<float>(tpl["x"].asDouble().unwrapOr(300.0));
-            float baseY = static_cast<float>(tpl["y"].asDouble().unwrapOr(120.0));
-            if (baseY < 120.f) baseY = 120.f;
+            float baseX = snapToGrid(static_cast<float>(tpl["x"].asDouble().unwrapOr(315.0)));
+            float baseY = snapToGrid(static_cast<float>(tpl["y"].asDouble().unwrapOr(15.0)));
+            if (baseY < 15.f) baseY = 15.f;
+
+            bool allowCustom = (customId > 1 && !isDangerousTemplateId(customId) &&
+                name != "wave_up" && name != "wave_down" && name != "orb_jump" &&
+                name != "pad_jump" && name != "spider_ceiling" && name != "ship_corridor");
+
             for (auto& part : getTemplateParts(name)) {
-                int finalId = (customId > 0 && name != "wave_up" && name != "wave_down") ? customId : part.defaultId;
-                trySpawn(finalId, baseX + part.dx * 30.f, baseY + part.dy * 30.f, 0.f, part.flipX, part.flipY);
+                int finalId = (allowCustom && part.defaultId == 1) ? customId : part.defaultId;
+                trySpawn(finalId, baseX + part.dx * 30.f, baseY + part.dy * 30.f, part.rot, part.flipX, part.flipY);
             }
         }
     }
@@ -242,10 +267,11 @@ void AIChatWindow::executeAIActions(const std::string& rawText) {
     auto objVal = root.contains("o") ? root["o"] : root["objects"];
     if (editor && objVal.isArray()) {
         for (auto& item : objVal.asArray().unwrap()) {
-            if (!g_aiControlling) break;
+            if (!g_aiControlling || spawned >= MAX_SPAWN) break;
             int id = item["id"].asInt().unwrapOr(1);
-            float objX = static_cast<float>(item["x"].asDouble().unwrapOr(300.0));
-            float objY = static_cast<float>(item["y"].asDouble().unwrapOr(120.0));
+            if (id == 31) continue; // запрещаем спавн стартпосов
+            float objX = static_cast<float>(item["x"].asDouble().unwrapOr(315.0));
+            float objY = static_cast<float>(item["y"].asDouble().unwrapOr(15.0));
             float rot = static_cast<float>(item["rot"].asDouble().unwrapOr(0.0));
             trySpawn(id, objX, objY, rot, false, false);
         }
